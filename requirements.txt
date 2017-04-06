@@ -1,6 +1,5 @@
 appdirs==1.4.3
 bleach==2.0.0
-bson==0.4.6
 decorator==4.0.11
 entrypoints==0.2.2
 html5lib==0.999999999
