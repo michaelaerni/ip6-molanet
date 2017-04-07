@@ -68,7 +68,7 @@ class MoleSample(object):
             data_source: str,
             data_set: str,
             source_id: str,
-            set_id: str,
+            name: str,
             dimensions: (int, int),
             diagnosis: Diagnosis,
             image: Binary,
@@ -78,7 +78,7 @@ class MoleSample(object):
         self.data_source = data_source
         self.data_set = data_set
         self.source_id = source_id
-        self.set_id = set_id
+        self.set_id = name
         self.dimensions = dimensions
         self.diagnosis = diagnosis
         self.use_case = use_case
