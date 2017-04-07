@@ -5,10 +5,10 @@ from molanet.data.entities import MoleSample
 
 
 class MongoConnection(object):
-
-    def __init__(self, url: str = "mongodb://localhost:27017/", db_name: str = "molanet"):
+    def __init__(self, user: str, pwd: str, url: str = "mongodb://localhost:27017/", db_name: str = "molanet"):
         self.client = MongoClient(url)
         self.database = self.client[db_name]
+        self.database.authenticate(user, pwd, mechanism='SCRAM-SHA-1')
 
     def load_data_set(self, data: [MoleSample]) -> [ObjectId]:
         def dict_with_id(sample: MoleSample):

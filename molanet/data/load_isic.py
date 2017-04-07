@@ -91,8 +91,7 @@ def getImageInfo(id, resultDict={}, debug=False):
 
 
 def connect(url, port, user, pw, dbname):
-    url = 'mongodb://' + user + ':' + pw + '@' + url + ':' + port + '/'
-    dbconnection = MongoConnection(url, dbname)
+    dbconnection = MongoConnection(user, pw, url, dbname)
     return dbconnection
 
 
@@ -100,7 +99,6 @@ def parsedbconnectioninfo_connect(file):
     f = open(file, 'r')
     params = json.loads(f.read())
     return connect(params['url'], params['port'], params['user'], params['pass'], 'molanet')
-
 
 def parse_diagnosis(diagnosis):
     switch = {
@@ -127,7 +125,6 @@ def parse_segmentation(segmentations, dimensions):
 
 
 def parsedata(dict):
-    print(dict)
     dim = (dict[_dimensionsX], dict[_dimensionsY])
     return MoleSample(dict[_uuid],
                       dict[_dataSource],
@@ -141,8 +138,8 @@ def parsedata(dict):
 
 
 def load_isic(maxImages=15000):
-    # dbconnection = parsedbconnectioninfo_connect('dbconnection.json')
-    dbconnection = MongoConnection(url='mongodb://localhost:27017/', db_name='molanet')
+    dbconnection = parsedbconnectioninfo_connect('dbconnection.json')
+    # dbconnection = MongoConnection(url='mongodb://localhost:27017/', db_name='molanet')
     data = list_images(maxImages)
     count = 0
     for imageData in data:
@@ -153,11 +150,11 @@ def load_isic(maxImages=15000):
         except BulkWriteError:
             exc_info = sys.exc_info()
             print(exc_info)
+            print("probably attempted to overwrite existing document _id=%s (aka. %s)" % (sample.uuid, sample.name))
             pass
         # dosomething with it
+        print("%d : %s from dataset %s done" % (count, sample.name, sample.data_set))
         count += 1
-        if (count % 200 == 0):
-            print('retrieved ' + count + ' images')
 
 
 # p = parsedata(getImageInfo("5436e3abbae478396759f0cf",debug=True))
