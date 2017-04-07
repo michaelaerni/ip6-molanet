@@ -2,6 +2,7 @@ import json
 import sys
 
 import requests
+from bson import Binary
 
 from molanet.data.database import MongoConnection
 from molanet.data.entities import MoleSample, Diagnosis, Segmentation, SkillLevel
@@ -90,7 +91,7 @@ def getImageInfo(id, resultDict={}, debug=False):
 
 
 def connect(url, port, user, pw, dbname):
-    url = 'mongodb://' + user + ':' + pw + '@' + url + ':' + port
+    url = 'mongodb://' + user + ':' + pw + '@' + url + ':' + port + '/'
     dbconnection = MongoConnection(url, dbname)
     return dbconnection
 
@@ -116,11 +117,10 @@ def parse_segmentation(segmentations, dimensions):
             'expert': SkillLevel.EXPERT
         }
         return switch[skill]
-
     parsed = []
     for seg in segmentations:
         parsed.append(Segmentation(seg['_id'],
-                                   requests.get(seg['segmentationDownloadUrl']).content,
+                                   Binary(requests.get(seg['segmentationDownloadUrl']).content),
                                    parseSkill(seg['skill']),
                                    dimensions))
     return parsed
@@ -136,7 +136,7 @@ def parsedata(dict):
                       dict[_name],
                       dim,
                       Diagnosis(parse_diagnosis(dict[_benign_malignant])),
-                      requests.get(dict[_imageDownloadURl]).content,
+                      Binary(requests.get(dict[_imageDownloadURl]).content),
                       parse_segmentation(dict[_segmentation], dimensions=None))
 
 
