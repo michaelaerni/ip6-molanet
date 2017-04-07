@@ -11,7 +11,12 @@ class MongoConnection(object):
         self.database = self.client[db_name]
 
     def load_data_set(self, data: [MoleSample]) -> [ObjectId]:
-        dict_list = [sample.dict() for sample in data]
+        def dict_with_id(sample: MoleSample):
+            dict = sample.dict()
+            dict['_id'] = sample.uuid
+            return dict
+
+        dict_list = [dict_with_id(sample) for sample in data]
         return self.database.samples.insert_many(dict_list)
 
     def clear_data(self, data_source: str, data_set: str = None) -> int:
