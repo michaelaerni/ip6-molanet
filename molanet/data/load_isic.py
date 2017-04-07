@@ -22,8 +22,9 @@ def segmentationParamFromID(id):
     return addParam(segmentationParams, "imageId", id)
 
 
-def list_images(numberOfImages):
-    r = requests.get(url=imagesListUrl, params=addParam(imagesListParams, "limit", numberOfImages))
+def list_images(numberOfImages: int, offset: int):
+    p = addParam(imagesListParams, "limit", numberOfImages)
+    r = requests.get(url=imagesListUrl, params=addParam(p, 'offset', str(offset)))
     data = json.loads(r.text)
     return data
 
@@ -137,11 +138,11 @@ def parsedata(dict):
                       parse_segmentation(dict[_segmentation], dimensions=None))
 
 
-def load_isic(maxImages=15000):
+def load_isic(maxImages=15000, offset=0):
     dbconnection = parsedbconnectioninfo_connect('dbconnection.json')
     # dbconnection = MongoConnection(url='mongodb://localhost:27017/', db_name='molanet')
-    data = list_images(maxImages)
-    count = 0
+    data = list_images(maxImages, offset)
+    count = offset
     for imageData in data:
         sample = parsedata(getImageInfo(imageData['_id']))
         from pymongo.errors import BulkWriteError
