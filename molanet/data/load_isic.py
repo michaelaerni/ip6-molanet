@@ -108,7 +108,7 @@ def getimageinfo(im_id, debug=False):
 
 
 def connect(url, port, user, pw, dbname):
-    dbconnection = MongoConnection(user, pw, url, dbname)
+    dbconnection = MongoConnection(url=url, username=user, password=pw, db_name=dbname)
     return dbconnection
 
 
