@@ -5,7 +5,6 @@ from molanet.data.entities import MoleSample
 
 
 class MongoConnection(object):
-    # TODO: Handle enums (are not automatically encoded)
 
     def __init__(self, url: str = "mongodb://localhost:27017/", db_name: str = "molanet"):
         self.client = MongoClient(url)
