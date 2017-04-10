@@ -166,7 +166,7 @@ def parsedata(data):
                        segmentations), (image, np_image), segmentations_raw)
 
 
-def load_isic(maximages=15000, offset=0, logFilePath=None, dir: MolanetDir = None):
+def load_isic(maximages=15000, offset=0, logFilePath=None, data_dump_dir: MolanetDir = None):
     dbconnection = parsedbconnectioninfo_connect('dbconnection.json')
     # dbconnection = MongoConnection(url='mongodb://localhost:27017/', db_name='molanet')
     data = list_images(maximages, offset)
@@ -175,13 +175,13 @@ def load_isic(maximages=15000, offset=0, logFilePath=None, dir: MolanetDir = Non
     for imageData in data:
         sample, (image, np_image), seg_raw = parsedata(getimageinfo(imageData['_id']))
 
-        if dir is not None:
-            sample.save_original_jpg(image, dir)
-            sample.save_np_image(np_image, dir)
+        if data_dump_dir is not None:
+            data_dump_dir.save_original_jpg(image, data_dump_dir)
+            data_dump_dir.save_np_image(np_image, data_dump_dir)
             for segmentation in sample.segmentations:
                 (image, np_image) = seg_raw[segmentation.segmentation_id]
-                segmentation.save_original_segmentation(image, sample.uuid, dir)
-                segmentation.save_np_segmentation(np_image, sample.uuid, dir)
+                data_dump_dir.save_original_segmentation(image, sample.uuid, data_dump_dir)
+                data_dump_dir.save_np_segmentation(np_image, sample.uuid, data_dump_dir)
 
         try:
             dbconnection.insert(sample)
@@ -223,7 +223,7 @@ def load_isic(maximages=15000, offset=0, logFilePath=None, dir: MolanetDir = Non
 logFilePath = "log_load_isic"
 
 
-def load_isic_multithreaded(dir: MolanetDir = MolanetDir("samples")):
+def load_isic_multithreaded(data_dump_dir: MolanetDir = None):
     cpu_count = multiprocessing.cpu_count()
     for core_id in range(0, cpu_count):
         max_images = 12000 // cpu_count
@@ -231,9 +231,10 @@ def load_isic_multithreaded(dir: MolanetDir = MolanetDir("samples")):
         logpath = logFilePath + ' thread=%d.txt' % core_id
         print('thread %d fetching from %d to %d' % (core_id, offset, offset + max_images))
         t = threading.Thread(target=load_isic,
-                             args=(offset + max_images + 9, offset, logpath, dir))
+                             args=(offset + max_images + 9, offset, logpath, data_dump_dir))
         t.start()
 
 
 # load_isic_multithreaded(None)
-load_isic_multithreaded(None)
+# load_isic_multithreaded(None)
+load_isic(logFilePath=logFilePath)
