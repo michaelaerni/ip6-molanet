@@ -7,8 +7,7 @@ import threading
 import numpy as np
 import requests
 from PIL import Image
-from bson.binary import Binary
-from pymongo.errors import DocumentTooLarge
+from pymongo.errors import DocumentTooLarge, DuplicateKeyError
 
 from molanet.data.database import MongoConnection
 from molanet.data.entities import MoleSample, Diagnosis, Segmentation, SkillLevel
@@ -144,7 +143,7 @@ def parse_segmentation(segmentations, dimensions: (int, int)):
         segmentation_image = downloadbinary_isic_segmentation(seg['_id'])
         segmentation_np_image = convert_binaryimage_numpyarray(segmentation_image)
         parsed.append(Segmentation(seg['_id'],
-                                   Binary(np.ndarray.tobytes(segmentation_np_image)),
+                                   segmentation_np_image,
                                    parseskill(seg['skill']),
                                    dimensions))
         images[seg['_id']] = (segmentation_image, segmentation_np_image)
@@ -163,7 +162,7 @@ def parsedata(data):
                        data[_name],
                        dim,
                        Diagnosis(parse_diagnosis(data[_benign_malignant])),
-                       Binary(np.ndarray.tobytes(np_image)),
+                       np_image,
                        segmentations), (image, np_image), segmentations_raw)
 
 
@@ -184,14 +183,12 @@ def load_isic(maximages=15000, offset=0, logFilePath=None, dir: MolanetDir = Non
                 segmentation.save_original_segmentation(image, sample.uuid, dir)
                 segmentation.save_np_segmentation(np_image, sample.uuid, dir)
 
-        from pymongo.errors import BulkWriteError
         try:
-            dbconnection.load_data_set([sample])
-
+            dbconnection.insert(sample)
             if logFilePath is not None:
                 logfile.write("%d : %s from dataset %s done\n" % (count, sample.name, sample.data_set))
                 logfile.flush()
-        except BulkWriteError:
+        except DuplicateKeyError:
             exc_info = sys.exc_info()
             print(exc_info)
             print("probably attempted to overwrite existing document _id=%s (aka. %s)" % (sample.uuid, sample.name))
@@ -238,4 +235,5 @@ def load_isic_multithreaded(dir: MolanetDir = MolanetDir("samples")):
         t.start()
 
 
-load_isic_multithreaded()
+# load_isic_multithreaded(None)
+load_isic_multithreaded(None)
