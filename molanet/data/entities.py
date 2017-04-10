@@ -1,10 +1,13 @@
+import os
 from enum import Enum
 
+import numpy as np
 from bson.binary import Binary
+from numpy.core.records import ndarray
 from typing import Dict, Any, List
 
-
 # TODO: This is probably the least idiomatic python code ever
+from molanet.data.molanetdir import MolanetDir
 
 
 def entity(cls, prefix=""):
@@ -44,7 +47,6 @@ class UseCase(Enum):
 
 @entity
 class Segmentation(object):
-
     def __init__(
             self,
             segmentation_id: str,
@@ -58,10 +60,19 @@ class Segmentation(object):
         self.dimensions = dimensions
         self.use_case = use_case
 
+    def save_original_segmentation(self, image: bytes, uuid: str, dir: MolanetDir):
+        with open(os.path.join(dir.segmentations, uuid + self.segmentation_id + '.jpg'), 'wb') as f:
+            f.write(image)
+
+    def save_np_segmentation(self, np_image: ndarray, uuid: str, dir: MolanetDir):
+        np.save(os.path.join(dir.segmentations_numpy, uuid + self.segmentation_id), np_image)
+
+    def load_np_segmentation(self, uuid: str, dir: MolanetDir):
+        return np.load(os.path.join(dir.segmentations_numpy, uuid + self.segmentation_id))
+
 
 @entity
 class MoleSample(object):
-
     def __init__(
             self,
             uuid: str,
@@ -84,3 +95,13 @@ class MoleSample(object):
         self.use_case = use_case
         self.image = image
         self.segmentations = segmentations
+
+    def save_original_jpg(self, image: bytes, dir: MolanetDir):
+        with open(os.path.join(dir.images, self.uuid + '.jpg'), 'wb') as f:
+            f.write(image)
+
+    def save_np_image(self, np_image: ndarray, dir: MolanetDir):
+        np.save(os.path.join(dir.images_numpy, self.uuid), np_image)
+
+    def load_np_image(self, dir: MolanetDir):
+        return np.load(os.path.join(dir.images_numpy, self.uuid))
