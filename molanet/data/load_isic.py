@@ -1,240 +1,141 @@
+import argparse
 import io
-import json
-import multiprocessing
-import sys
-import threading
 
 import numpy as np
 import requests
 from PIL import Image
-from pymongo.errors import DocumentTooLarge, DuplicateKeyError
+from typing import Iterable
 
-from molanet.data.database import MongoConnection
+from molanet.data.database import DatabaseConnection
 from molanet.data.entities import MoleSample, Diagnosis, Segmentation, SkillLevel
-from molanet.data.molanetdir import MolanetDir
-
-segmentationurl = r"https://isic-archive.com:443/api/v1/segmentation"
-segmentationParams = {"limit": "50", "offset": "0", "sort": "created", "sortdir": "-1"}
-
-imagesListUrl = r"https://isic-archive.com:443/api/v1/image"
-imagesListParams = {"limit": "50", "offset": "0", "sort": "name", "sortdir": "1"}
-imageDetailsUrl = "https://isic-archive.com:443/api/v1/image/"
 
 
-def addparam(param, key, value):
-    param[key] = str(value)
-    return param
+def parse_diagnosis(raw_diagnosis: str) -> Diagnosis:
+    return {
+        "benign": Diagnosis.BENIGN,
+        "malignant": Diagnosis.MALIGNANT
+    }[raw_diagnosis]
 
 
-def list_images(maxnumberofimages: int, offset: int):
-    p = addparam(imagesListParams, "limit", maxnumberofimages)
-    r = requests.get(url=imagesListUrl, params=addparam(p, 'offset', str(offset)))
-    data = json.loads(r.text)
-    return data
+def parse_skill_level(raw_level : str) -> SkillLevel:
+    return {
+        "expert": SkillLevel.EXPERT,
+        "novice": SkillLevel.NOVICE
+    }[raw_level]
 
 
-def getimagedetails(id):
-    r = requests.get(url=imageDetailsUrl + id)
-    return json.loads(r.text)
+class IsicLoader(object):
+    def __init__(self, base_url="https://isic-archive.com/api/v1/", data_source="isic", batch_size=100):
+        self._base_url = base_url
+        self._data_source = data_source
+        self._batch_size = batch_size
+
+    def _perform_request(self, relative_url, parameters=None):
+        return requests.get(self._base_url + relative_url, params=parameters)
+
+    def fetch_image_ids(self, offset):
+        return self._perform_request("image", {"limit": self._batch_size, "offset": offset, "sort": "_id"}).json()
+
+    def fetch_segmentation_ids(self, image_id, offset):
+        return self._perform_request("segmentation", {"imageId": image_id, "limit": self._batch_size, "offset": offset, "sort": "_id"}).json()
+
+    def fetch_image_matrix(self, image_id) -> np.ndarray:
+        raw_image = Image.open(io.BytesIO(self._perform_request(f"image/{image_id}/download").content))
+        return np.array(raw_image)
+
+    def fetch_segmentation_matrix(self, segmentation_id) -> np.ndarray:
+        raw_image = Image.open(io.BytesIO(self._perform_request(f"segmentation/{segmentation_id}/mask").content))
+        return np.array(raw_image) // 255  # Normalize to [0, 1]
+
+    def fetch_image_metadata(self, image_id):
+        return self._perform_request(f"image/{image_id}").json()
+
+    def fetch_segmentations(self, image_id) -> Iterable[Segmentation]:
+        batch_offset = 0
+        current_batch = self.fetch_segmentation_ids(image_id, batch_offset)
+        while len(current_batch) > 0:
+            for current_segmentation in current_batch:
+                segmentation_id = current_segmentation["_id"]
+                mask = self.fetch_segmentation_matrix(segmentation_id)
+                yield Segmentation(
+                    segmentation_id,
+                    mask,
+                    parse_skill_level(current_segmentation["skill"]),
+                    (mask.shape[0], mask.shape[1])
+                )
+
+            # Load next batch, might be empty at the end
+            batch_offset += len(current_batch)
+            current_batch = self.fetch_segmentation_ids(image_id, batch_offset)
+
+    def create_uuid(self, image_id):
+        return f"{self._data_source}_{image_id}"
+
+    def load_samples(self) -> Iterable[MoleSample]:
+        batch_offset = 0
+
+        current_batch = self.fetch_image_ids(batch_offset)
+        while len(current_batch) > 0:
+            # Process all images in current batch and yield results
+            for current_image in current_batch:
+                source_id = current_image["_id"]
+                friendly_name = current_image["name"]
+
+                # Load required data
+                image_values = self.fetch_image_matrix(source_id)
+                metadata = self.fetch_image_metadata(source_id)
+                segmentations = list(self.fetch_segmentations(source_id))
+
+                # Create new sample
+                yield MoleSample(
+                    self.create_uuid(source_id),
+                    self._data_source,
+                    metadata["dataset"]["name"],
+                    source_id,
+                    friendly_name,
+                    (int(metadata["meta"]["acquisition"]["pixelsY"]), int(metadata["meta"]["acquisition"]["pixelsX"])),
+                    parse_diagnosis(metadata["meta"]["clinical"]["benign_malignant"]),
+                    image_values,
+                    segmentations
+                )
+
+            # Load next batch, might be empty at the end
+            batch_offset += len(current_batch)
+            current_batch = self.fetch_image_ids(batch_offset)
 
 
-def getsegmentationinfo(id):
-    r = requests.get(url=segmentationurl, params=addparam(segmentationParams, "imageId", id))
-    return json.loads(r.text)
+def create_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser("Load ISIC images and segmentations into a database")
+
+    parser.add_argument("--database-host", type=str, default="localhost", help="Target database host")
+    parser.add_argument("--database", type=str, default="molanet", help="Target database name")
+    parser.add_argument("--database-username", default=None, help="Target database username")
+    parser.add_argument("--database-password", default=None, help="Target database password")
+    parser.add_argument("--database-port", type=int, default=5432, help="Target database port")
+
+    parser.add_argument("--api-url", type=str, default="https://isic-archive.com/api/v1/", help="Base API url of the data source")
+    parser.add_argument("--data-source-name", type=str, default="isic", help="Name of the data source stored in the database")
+    parser.add_argument("--fetch-batch-size", type=int, default=200, help="Size of batches which are fetched from the data source")
+
+    return parser
 
 
-def downloadbinary_isic_image(id):
-    url = 'https://isic-archive.com:443/api/v1/image/' + id + '/download'
-    return requests.get(url).content
+if __name__ == "__main__":
+    # Parse arguments
+    parser = create_arg_parser()
+    args = parser.parse_args()
 
+    data_source = args.data_source_name
+    loader = IsicLoader(args.api_url, data_source, args.fetch_batch_size)
 
-def downloadbinary_isic_superpixels(id):
-    url = 'https://isic-archive.com:443/api/v1/image/' + id + '/superpixels'
-    return requests.get(url).content
+    with DatabaseConnection(args.database_host, args.database, username=args.database_username, password=args.database_password) as db:
+        removed_count = db.clear_data(data_source)
+        print(f"Cleared data set, deleted {removed_count} rows")
 
+        sample_count = 0
+        for sample in loader.load_samples():
+            sample_count += 1
 
-def downloadbinary_isic_segmentation(segmentation_id):
-    url = 'https://isic-archive.com:443/api/v1/segmentation/' + segmentation_id + '/mask?contentDisposition=inline'
-    return requests.get(url).content
+            db.insert(sample)
 
-
-def convert_binaryimage_numpyarray(im_binary: bytes):
-    image = Image.open(io.BytesIO(im_binary))
-    return np.array(image)
-
-
-_uuid = 'uuid'
-_name = 'name'  # eg ISIC_00001
-_idInDataSet = 'idInDataset'  # eg 5436e3acbae478396759f0d1
-_dataSource = 'dataSource'
-_datasetName = 'datasetName'
-_dimensionsX = 'dimensionsX'
-_dimensionsY = 'dimensionsY'
-_benign_malignant = 'benign_malignant'
-_diagnosis = 'diagnosis'
-_imageSuperPixelsDownloadUrl = 'imageSuperPixelsDownloadUrl'
-_dataSetUniqueID = 'dataSetUniqueID'
-_segmentation = 'segmentation'
-
-
-def getimageinfo(im_id, debug=False):
-    resultdict = {}
-    data = getimagedetails(im_id)
-    resultdict[_dataSource] = 'isic'
-    resultdict[_uuid] = resultdict[_dataSource] + im_id
-    resultdict[_datasetName] = data['dataset']['name']
-    resultdict[_dataSetUniqueID] = data['dataset']['_id']
-    resultdict[_idInDataSet] = im_id
-    resultdict[_name] = data['name']
-    resultdict[_dimensionsX] = data['meta']['acquisition']['pixelsX']
-    resultdict[_dimensionsY] = data['meta']['acquisition']['pixelsY']
-    resultdict[_benign_malignant] = data['meta']['clinical']['benign_malignant']
-    resultdict[_diagnosis] = data['meta']['clinical']['diagnosis']
-
-    segmentations = getsegmentationinfo(im_id)
-    resultdict[_segmentation] = segmentations
-    if debug:
-        print(resultdict)
-        # save stuff to file or something
-        f = open('segmentation' + resultdict[_segmentation][0]['_id'] + '.jpg', 'wb')
-        f.write(downloadbinary_isic_segmentation(resultdict[_segmentation][0]['_id']))
-        f.close()
-        # save to image to a file or something
-        f = open(resultdict[_name] + '.jpg', 'wb')
-        f.write(downloadbinary_isic_image(resultdict[_idInDataSet]))
-        f.close()
-        f = open(resultdict[_name] + '_data.json', 'w')
-        f.write(json.dumps(resultdict))
-        f.close()
-
-    return resultdict
-
-
-def connect(url, port, user, pw, dbname):
-    dbconnection = MongoConnection(url=url, username=user, password=pw, db_name=dbname)
-    return dbconnection
-
-
-def parsedbconnectioninfo_connect(file):
-    f = open(file, 'r')
-    params = json.loads(f.read())
-    return connect(params['url'], params['port'], params['user'], params['pass'], 'molanet')
-
-
-def parse_diagnosis(diagnosis):
-    switch = {
-        'benign': Diagnosis.BENIGN,
-        'malignant': Diagnosis.MALIGNANT,
-    }
-    return switch.get(diagnosis, Diagnosis.UNKNOWN)
-
-
-def parse_segmentation(segmentations, dimensions: (int, int)):
-    def parseskill(skill):
-        switch = {
-            'novice': SkillLevel.NOVICE,
-            'expert': SkillLevel.EXPERT
-        }
-        return switch[skill]
-
-    parsed = []
-    images = {}
-    for seg in segmentations:
-        segmentation_image = downloadbinary_isic_segmentation(seg['_id'])
-        segmentation_np_image = convert_binaryimage_numpyarray(segmentation_image)
-        parsed.append(Segmentation(seg['_id'],
-                                   segmentation_np_image,
-                                   parseskill(seg['skill']),
-                                   dimensions))
-        images[seg['_id']] = (segmentation_image, segmentation_np_image)
-    return parsed, images
-
-
-def parsedata(data):
-    dim = (data[_dimensionsX], data[_dimensionsY])
-    image = downloadbinary_isic_image('5436e3abbae478396759f0cf')
-    np_image = convert_binaryimage_numpyarray(image)
-    (segmentations, segmentations_raw) = parse_segmentation(data[_segmentation], dimensions=None)
-    return (MoleSample(data[_uuid],
-                       data[_dataSource],
-                       data[_datasetName],
-                       data[_idInDataSet],
-                       data[_name],
-                       dim,
-                       Diagnosis(parse_diagnosis(data[_benign_malignant])),
-                       np_image,
-                       segmentations), (image, np_image), segmentations_raw)
-
-
-def load_isic(maximages=15000, offset=0, logFilePath=None, data_dump_dir: MolanetDir = None):
-    dbconnection = parsedbconnectioninfo_connect('dbconnection.json')
-    # dbconnection = MongoConnection(url='mongodb://localhost:27017/', db_name='molanet')
-    data = list_images(maximages, offset)
-    count = offset
-    logfile = open(logFilePath, 'w')
-    for imageData in data:
-        sample, (image, np_image), seg_raw = parsedata(getimageinfo(imageData['_id']))
-
-        if data_dump_dir is not None:
-            data_dump_dir.save_original_jpg(image, data_dump_dir)
-            data_dump_dir.save_np_image(np_image, data_dump_dir)
-            for segmentation in sample.segmentations:
-                (image, np_image) = seg_raw[segmentation.segmentation_id]
-                data_dump_dir.save_original_segmentation(image, sample.uuid, data_dump_dir)
-                data_dump_dir.save_np_segmentation(np_image, sample.uuid, data_dump_dir)
-
-        try:
-            dbconnection.insert(sample)
-            if logFilePath is not None:
-                logfile.write("%d : %s from dataset %s done\n" % (count, sample.name, sample.data_set))
-                logfile.flush()
-        except DuplicateKeyError:
-            exc_info = sys.exc_info()
-            print(exc_info)
-            print("probably attempted to overwrite existing document _id=%s (aka. %s)" % (sample.uuid, sample.name))
-
-            if logFilePath is not None:
-                logfile.write(
-                    "probably attempted to overwrite existing document _id=%s (aka. %s)\n" % (sample.uuid, sample.name))
-                logfile.flush()
-            pass
-        except DocumentTooLarge:
-            exc_info = sys.exc_info()
-            print(exc_info)
-            print("too large document _id=%s (aka. %s)" % (sample.uuid, sample.name))
-            if logFilePath is not None:
-                logfile.write('%d Document to large _id=%s (aka. %s)' % (count, sample.uuid, sample.name))
-                logfile.flush()
-            pass
-        # dosomething with it
-        count += 1
-    logfile.close()
-
-
-# p = parsedata(getImageInfo("5436e3abbae478396759f0cf",debug=True))
-# im = convert_binaryimage_numpyarray(downloadbinary_isic_image('5436e3abbae478396759f0cf'))
-# print(im.shape)
-# seg = convert_binaryimage_numpyarray(downloadbinary_isic_segmentation('5463934bbae47821f88025ad'))
-# print(seg.shape)
-# load_isic(maxImages=5)
-# with open(logFilePath, 'w') as log:
-#    load_isic(offset=377, logFile=log, dir=MolanetDir('samples'))
-
-logFilePath = "log_load_isic"
-
-
-def load_isic_multithreaded(data_dump_dir: MolanetDir = None):
-    cpu_count = multiprocessing.cpu_count()
-    for core_id in range(0, cpu_count):
-        max_images = 12000 // cpu_count
-        offset = max_images * core_id
-        logpath = logFilePath + ' thread=%d.txt' % core_id
-        print('thread %d fetching from %d to %d' % (core_id, offset, offset + max_images))
-        t = threading.Thread(target=load_isic,
-                             args=(offset + max_images + 9, offset, logpath, data_dump_dir))
-        t.start()
-
-
-# load_isic_multithreaded(None)
-# load_isic_multithreaded(None)
-load_isic(logFilePath=logFilePath)
+            print(f"[{sample_count}]: Saved sample {sample.uuid} from data set {sample.data_set}")

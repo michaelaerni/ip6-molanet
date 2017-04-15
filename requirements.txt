@@ -19,10 +19,12 @@ nbconvert==5.1.1
 nbformat==4.3.0
 notebook==5.0.0
 numpy==1.12.1
+olefile==0.44
 packaging==16.8
 pandocfilters==1.4.1
 pexpect==4.2.1
 pickleshare==0.7.4
+Pillow==4.1.0
 prompt-toolkit==1.0.14
 protobuf==3.2.0
 psycopg2==2.7.1
@@ -34,6 +36,7 @@ python-dateutil==2.6.0
 pytz==2017.2
 pyzmq==16.0.2
 qtconsole==4.3.0
+requests==2.13.0
 simplegeneric==0.8.1
 six==1.10.0
 tensorflow==1.0.1
