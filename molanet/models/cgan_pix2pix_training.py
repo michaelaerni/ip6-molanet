@@ -3,9 +3,12 @@ import os
 import math
 import random
 
+import time
+
 from molanet.models.cgan_pix2pix import *
 import numpy as np
 from PIL import Image
+
 
 class Model(object):
     def __init__(self, batch_size, image_size, image_color_dim, l1_lambda=100):
@@ -61,9 +64,9 @@ class Model(object):
         self.d_vars = [var for var in t_vars if 'd_' in var.name]
         self.g_vars = [var for var in t_vars if 'g_' in var.name]
 
-    def load_random_samples(self, num_images,source_dir,target_dir ):
+    def load_random_samples(self, num_images, source_dir, target_dir):
         data = np.random.choice(np.arange(num_images), self.batch_size)
-        source, target = [load_image(sample_file,source_dir,target_dir) for sample_file in data]
+        source, target = [load_image(sample_file, source_dir, target_dir) for sample_file in data]
 
 
 def load_image(number: int, source_dir, target_dir):
@@ -94,19 +97,27 @@ def load_image(number: int, source_dir, target_dir):
 
     return np.array(source), np.array(target)
 
-def get_image_batch(batch_size,images_count,source_dir,target_dir):
-    #TODO chances are we don't get fucked by rng
+
+def get_image_batch(batch_size, images_count, source_dir, target_dir) -> [np.ndarray,np.ndarray] :
+    # TODO chances are we don't get fucked by rng
     indices = [random.randint(1, images_count) for _ in range(batch_size)]
-    images = [ load_image(x,source_dir,target_dir) for x in indices]
+    images = [load_image(x, source_dir, target_dir) for x in indices]
     return images
 
-#train
+
+# train
 def train():
     restore_iteration = None
+    iterations = 50000
     saver = tf.train.Saver()
     batch_size = 1
     sess = None
     is_grayscale = True
+    size = 256
+    model = Model(batch_size, size, 1)
+    model.build_model()
+    sample_dir = "./sample"  # Generated samples
+    model_directory = "./models"  # Model
 
     if restore_iteration is not None and restore_iteration > 0:
         iteration_start = restore_iteration + 1
@@ -114,19 +125,60 @@ def train():
     else:
         iteration_start = 0
 
-    iterations = 50000
+    # Optimizers
+    disc_optim = tf.train.AdamOptimizer(learning_rate=0.0002, beta1=0.5)  # TODO: pix2pix params
+    gen_optim = tf.train.AdamOptimizer(learning_rate=0.0002, beta1=0.5)  # TODO: pix2pix params
+
+    disc_update_step = disc_optim.minimize(model.d_loss, var_list=model.d_vars)
+    gen_update_step = gen_optim.minimize(model.g_loss, var_list=model.g_vars)
+
+    start_time = time.time()
     for iteration in range(iteration_start, iterations):
-        #TODO hardcoded
-        batch_images = get_image_batch(batch_size,11402,
+        # TODO hardcoded
+        (batch_src,batch_target) = get_image_batch(batch_size, 11402,
                                        source_dir=r'C:\Users\pdcwi\Documents\IP6 nonsynced\pix2pix-poc-data\training\source',
                                        target_dir=r'C:\Users\pdcwi\Documents\IP6 nonsynced\pix2pix-poc-data\training\target')
+        batch_src = (batch_src / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
+        batch_target = (batch_target / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
 
-
-        #dealing with batchsize > 1
+        # dealing with batchsize > 1
         batch = None
         if (is_grayscale):
-            batch = np.array(batch_images).astype(np.float32)[:, :, :, None]
+            batch_src = np.array(batch_src).astype(np.float32)[:, :, :, None]
+            batch_target = np.array(batch_target).astype(np.float32)[:, :, :, None]
+
         else:
-            batch = np.array(batch_images).astype(np.float32)
+            batch_src = np.array(batch_src).astype(np.float32)
+            batch_target = np.array(batch_target).astype(np.float32)
+
+        # Update discriminator
+        _, d_loss = sess.run([disc_update_step, model.d_loss],
+                             feed_dict={model.real_data_source: batch_src, model.real_data_target: batch_target})
+
+        # Update generator twice
+        _, g_loss = sess.run([gen_update_step, model.g_loss],
+                             feed_dict={model.real_data_source: batch_src, model.real_data_target: batch_target})
+        _, g_loss = sess.run([gen_update_step, model.g_loss],
+                             feed_dict={model.real_data_source: batch_src, model.real_data_target: batch_target})
+
+        errD_fake = model.d_loss_fake.eval({model.real_data_target: batch_target, model.real_data_source: batch_src})
+        errD_real = model.d_loss_real.eval({model.real_data_target: batch_target, model.real_data_source: batch_src})
+        errG = model.g_loss.eval({model.real_data_target: batch_target, model.real_data_source: batch_src})
+
+        print("Epoch: [%2d] time: %4.4f, d_loss: %.8f, g_loss: %.8f" \
+              % (iteration, time.time() - start_time, errD_fake + errD_real, errG))
+
+        # if iteration % 100 == 1:
+        #    sample_model(args.sample_dir, epoch, idx)
+
+        if iteration % 500 == 2:
+            save(saver, model_directory, iteration)
 
 
+def save(sess, saver, checkpoint_dir, step):
+    model_name = "cgan_pix2pix.model"
+
+    if not os.path.exists(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
+
+    saver.save(sess, os.path.join(checkpoint_dir, model_name), global_step=step)
