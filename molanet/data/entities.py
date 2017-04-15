@@ -1,25 +1,6 @@
 from enum import Enum
 
-from numpy.core.records import ndarray
-from typing import Dict, Any, List
-
-# TODO: This is probably the least idiomatic python code ever
-
-
-def entity(cls, prefix=""):
-    def create_dict(self) -> Dict[str, Any]:
-        return {name[len(prefix):]: sanitise(value) for name, value in vars(self).items() if name.startswith(prefix)}
-
-    def sanitise(value):
-        if isinstance(value, Enum):
-            return value.name
-        elif isinstance(value, List):
-            return [create_dict(item) for item in value]
-        else:
-            return value
-
-    cls.dict = create_dict
-    return cls
+from numpy import ndarray
 
 
 class SkillLevel(Enum):
@@ -41,25 +22,21 @@ class UseCase(Enum):
     IGNORE = 4
 
 
-@entity
 class Segmentation(object):
     def __init__(
             self,
-            segmentation_id: str,
+            source_id: str,
             mask: ndarray,
             skill_level: SkillLevel,
-            dimensions: (int, int) = None,
-            gridfs_id=None,
+            dimensions: (int, int),
             use_case: UseCase = UseCase.UNSPECIFIED):
-        self.segmentation_id = segmentation_id
+        self.source_id = source_id
         self.mask = mask
         self.skill_level = skill_level
         self.dimensions = dimensions
         self.use_case = use_case
-        self.gridfs_id = gridfs_id
 
 
-@entity
 class MoleSample(object):
     def __init__(
             self,
@@ -83,4 +60,3 @@ class MoleSample(object):
         self.use_case = use_case
         self.image = image
         self.segmentations = segmentations
-        self.gridfs_id = None

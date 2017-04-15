@@ -1,43 +1,53 @@
-import numpy as np
-from bson.objectid import ObjectId
-from gridfs import GridFS
-from pymongo import MongoClient
+import psycopg2
+from typing import Dict
 
 from molanet.data.entities import MoleSample
 
 
-class MongoConnection(object):
-    def __init__(self, url: str = "mongodb://localhost:27017/", db_name: str = "molanet", gridfs_name="molanetfs",
-                 username: str = None, password: str = None):
-        self.client = MongoClient(url)
-        self.database = self.client[db_name]
-        self.gridfs = GridFS(self.client[gridfs_name])
+class DatabaseConnection(object):
+    def __init__(self, host: str, database: str, port: int = 5432, username: str = None, password: str = None):
+        self._connection_params = {
+            "dbname": database,
+            "host": host,
+            "port": port,
+            "user": username,
+            "password": password
+        }
 
-        if username is not None and password is not None:
-            self.database.authenticate(username, password)
-            self.client[gridfs_name].authenticate(username, password)
+    def __enter__(self):
+        self._connection = psycopg2.connect(**self._connection_params)
+        return self
 
-    def insert(self, sample: MoleSample) -> ObjectId:
-        def apply_id(sample: MoleSample):
-            sample_dict = sample.dict()
-            sample_dict['_id'] = sample.uuid
-            return sample_dict
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._connection.close()
 
-        sample.gridfs_id = self.gridfs.put(np.ndarray.tobytes(sample.image),
-                                           _id=sample.uuid,
-                                           name=sample.name)
-        sample.image = None
-        for idx, segmentation in enumerate(sample.segmentations):
-            segmentation.gridfs_id = self.gridfs.put(np.ndarray.tobytes(segmentation.mask),
-                                                     _id=sample.uuid + str(idx),
-                                                     name=sample.name,
-                                                     segmentation_id=segmentation.segmentation_id)
-            segmentation.mask = None
-        return self.database.samples.insert(apply_id(sample))
+    def insert(self, sample: MoleSample) -> str:
+        query = "INSERT INTO mole_samples (uuid, data_source, data_set, source_id, name, height, width, diagnosis, use_case, image) " \
+                "VALUES (%(uuid)s, %(data_source)s, %(data_set)s, %(source_id)s, %(name)s, %(height)s, %(width)s, %(diagnosis)s, %(use_case)s, %(image)s)"
 
-    def clear_data(self, data_source: str, data_set: str = None) -> int:
-        filter_dict = {"data_source": data_source}
-        if data_set is not None:
-            filter_dict["data_set"] = data_set
+        with self._connection.cursor() as cur:
+            cur.execute(query, self._sample_to_dict(sample))
 
-        return self.database.samples.delete_many(filter_dict).deleted_count
+        return sample.uuid
+
+    def clear_data(self, data_source: str) -> int:
+        query = "DELETE FROM mole_samples WHERE data_source = %(data_source)s"
+
+        with self._connection.cursor() as cur:
+            cur.execute(query, {"data_source": data_source})
+            return cur.rowcount  # Number of deleted rows
+
+    @staticmethod
+    def _sample_to_dict(sample: MoleSample) -> Dict:
+        return {
+            "uuid": sample.uuid,
+            "data_source": sample.data_source,
+            "data_set": sample.data_set,
+            "source_id": sample.source_id,
+            "name": sample.name,
+            "height": sample.dimensions[0],
+            "width": sample.dimensions[1],
+            "diagnosis": sample.diagnosis.name,
+            "use_case": sample.use_case.name,
+            "image": sample.image.tobytes(order="C")
+        }
