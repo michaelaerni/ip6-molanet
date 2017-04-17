@@ -4,8 +4,9 @@ from numpy import ndarray
 
 
 class SkillLevel(Enum):
-    NOVICE = 0
-    EXPERT = 1
+    UNKNOWN = 0
+    NOVICE = 1
+    EXPERT = 2
 
 
 class Diagnosis(Enum):

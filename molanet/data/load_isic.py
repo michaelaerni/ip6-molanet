@@ -14,14 +14,14 @@ def parse_diagnosis(raw_diagnosis: str) -> Diagnosis:
     return {
         "benign": Diagnosis.BENIGN,
         "malignant": Diagnosis.MALIGNANT
-    }[raw_diagnosis]
+    }.get(raw_diagnosis, Diagnosis.UNKNOWN)  # indeterminate/* or unknown are stored as unknown (not relevant)
 
 
 def parse_skill_level(raw_level : str) -> SkillLevel:
     return {
         "expert": SkillLevel.EXPERT,
         "novice": SkillLevel.NOVICE
-    }[raw_level]
+    }.get(raw_level, SkillLevel.UNKNOWN)
 
 
 class IsicLoader(object):
