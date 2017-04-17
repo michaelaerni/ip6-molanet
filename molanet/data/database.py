@@ -44,6 +44,7 @@ class DatabaseConnection(object):
         with self._connection.cursor() as cur:
             # Segmentations are delete cascade, should be deleted too
             cur.execute(query, {"data_source": data_source})
+            self._connection.commit()
             return cur.rowcount  # Number of deleted rows
 
     @staticmethod
