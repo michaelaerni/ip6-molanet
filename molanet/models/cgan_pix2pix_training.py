@@ -159,8 +159,6 @@ def train():
             # batch_src = np.array(batch_src).astype(np.float32)
             batch_src = np.array(batch_src).astype(np.float32)[None, :, :, :]
             batch_target = np.array(batch_target).astype(np.float32)[None, :, :, None]
-            # print('after src ' + str(batch_src.shape))
-            # print('after trgt ' + str(batch_target.shape))
 
             _, summary_str = sess.run([disc_optim, d_sum],
                                       feed_dict={model.real_data_source: batch_src,
@@ -187,7 +185,7 @@ def train():
             print("Epoch: [%2d] time: %4.4f, d_loss: %.8f, g_loss: %.8f" \
                   % (iteration, time.time() - start_time, errD_fake + errD_real, errG))
 
-            if iteration % 100 == 1:
+            if iteration % 20 == 1:
                 # gib nice picture output :)
                 sample_model(sourcefiles, iteration, sess, source_dir, target_dir, model)
 
@@ -220,7 +218,7 @@ def save_ndarrays_asimage(filename: str, *arrays: np.ndarray):
     im.save(filename)
 
 
-def sample_model(filenames, epoch, sess, source_dir, target_dir, model: Model):
+def sample_model(filenames: [str], epoch: int, sess: tf.Session, source_dir: str, target_dir: str, model: Model):
     batch = get_image_batch(1, filenames, source_dir, target_dir)
     (batch_src, batch_target) = batch[0]
     original_source = batch_src.copy()
@@ -240,7 +238,8 @@ def sample_model(filenames, epoch, sess, source_dir, target_dir, model: Model):
     # from shape [1,255,255,1] : tensor to shape [255,255] : nddarray
     sample = (tf.squeeze(sample).eval() + 1) / 2 * 255
 
-    if not os.path.exists('samples'): os.mkdir('samples')
+    if not os.path.exists('samples'):
+        os.mkdir('samples')
     save_ndarrays_asimage('samples/sample_%d.png' % epoch, original_source, sample, original_target * 255)
     print("[Sample] d_loss: {:.8f}, g_loss: {:.8f}".format(d_loss, g_loss))
 
