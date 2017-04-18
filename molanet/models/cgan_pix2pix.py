@@ -9,15 +9,13 @@ use_gpu = False
 
 
 def cgan_pix2pix_generator(
-        image,
-        input_size=256,
-        input_color_channels=3,
+        image: np.ndarray,
         output_size=256,
         output_color_channels=3,
         batch_size=1,
         g_filter_dim=64
 ):
-    # image is assumed to be 256 x 256 (xydim * xydim * zdim)
+    # image is assumed to be 256 x 256 * 3
 
     with tf.variable_scope("generator"):
         # generator u-net
@@ -51,29 +49,21 @@ def cgan_pix2pix_generator(
         e8 = conv2d(leaky_relu(bn_e7), g_filter_dim * 8, name='g_e8_conv')
         bn_e8 = batch_norm(e8, 'g_bn_e8')
 
-
-    def deconv2d_skipConn(features, s, skip_con, g_filter_dim_factor, deconv_name, bn_name):
-        d = deconv2d(tf.nn.relu(features), [batch_size, s, s, g_filter_dim * g_filter_dim_factor], name=deconv_name)
-        d = batch_norm(d, bn_name)
-        d = tf.nn.dropout(d, 0.5)
-        d = tf.concat([d, skip_con], 3)  # skipconnection
-        return d
-
     # decoder with skip connections
 
     # deconvolve e8 and add skip connections to e7
-    d1 = deconv2d_skipConn(bn_e8, s128, bn_e7, 8, 'g_d1', 'g_bn_d1')
-    d2 = deconv2d_skipConn(d1, s64, bn_e6, 8, 'g_d2', 'g_bn_d3')
+    d1 = deconv2d_with_skipconn(bn_e8, s128, bn_e7, batch_size, g_filter_dim * 8, 'g_d1', 'g_bn_d1')
+    d2 = deconv2d_with_skipconn(d1, s64, bn_e6, batch_size, g_filter_dim * 8, 'g_d2', 'g_bn_d3')
     # d3 is (8 x 8 x g_filter_dim*8*2)
-    d3 = deconv2d_skipConn(d2, s32, bn_e5, 8, 'g_d3', 'g_bn_d3')
+    d3 = deconv2d_with_skipconn(d2, s32, bn_e5, batch_size, g_filter_dim * 8, 'g_d3', 'g_bn_d3')
     # d4 is (16 x 16 x g_filter_dim*4*2)
-    d4 = deconv2d_skipConn(d3, s16, bn_e4, 8, 'g_d4', 'g_bn_d4')
+    d4 = deconv2d_with_skipconn(d3, s16, bn_e4, batch_size, g_filter_dim * 8, 'g_d4', 'g_bn_d4')
     # d5 is (32 x 32 x g_filter_dim*4*2)
-    d5 = deconv2d_skipConn(d4, s8, bn_e3, 4, 'g_d5', 'g_bn_d5')
+    d5 = deconv2d_with_skipconn(d4, s8, bn_e3, batch_size, g_filter_dim * 4, 'g_d5', 'g_bn_d5')
     # d6 is 64 x 64 x g_filter_dim*2*2
-    d6 = deconv2d_skipConn(d5, s4, bn_e2, 2, 'g_d6', 'g_bn_d6')
+    d6 = deconv2d_with_skipconn(d5, s4, bn_e2, batch_size, g_filter_dim * 2, 'g_d6', 'g_bn_d6')
     # d7 is 128 x 128 x g_filter_dim*2*2
-    d7 = deconv2d_skipConn(d6, s2, e1, 1, 'g_d7', 'g_bn_d7')
+    d7 = deconv2d_with_skipconn(d6, s2, e1, batch_size, g_filter_dim, 'g_d7', 'g_bn_d7')
     # d8 is 256 x 256
     d8 = deconv2d(tf.nn.relu(d7), [batch_size, s, s, output_color_channels], name='g_d8')
 
@@ -102,6 +92,7 @@ def cgan_pix2pix_discriminator(
 
 
 def weight_variable(name, shape):
+    # TODO test using random_normal_initializer instead of truncated
     return tf.get_variable(name, shape, initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02))
 
 
@@ -112,9 +103,9 @@ def bias_variable(name, shape):
 
 def conv2d(input_, output_dim,
            k_h=5, k_w=5, d_h=2, d_w=2,
-           name="conv2d"):
+           name='conv2d'):
     with tf.variable_scope(name):
-        w = weight_variable('w', [k_h, k_w, input_.get_shape()[-1], output_dim])
+        w = weight_variable('w', [k_h, k_w, input_.shape[-1], output_dim])
         bias = bias_variable('bias', [output_dim])
         conv = tf.nn.conv2d(input_, w, strides=[1, d_h, d_w, 1], padding='SAME')
         conv = tf.reshape(tf.nn.bias_add(conv, bias), conv.get_shape())  # TODO just add bias no reshaping
@@ -122,23 +113,24 @@ def conv2d(input_, output_dim,
 
 
 def deconv2d(input_, output_shape,
-             k_h=5, k_w=5, d_h=2, d_w=2, stddev=0.02,
-             name="deconv2d", with_w=False):
+             k_h=5, k_w=5, d_h=2, d_w=2,
+             name='deconv2d'):
     with tf.variable_scope(name):
         # filter : [height, width, output_channels, in_channels]
-        w = tf.get_variable('w', [k_h, k_w, output_shape[-1], input_.get_shape()[-1]],
-                            initializer=tf.random_normal_initializer(stddev=stddev))
-
+        w = weight_variable('w', [k_h, k_w, output_shape[-1], input_.get_shape()[-1]])
         deconv = tf.nn.conv2d_transpose(input_, w, output_shape=output_shape,
                                         strides=[1, d_h, d_w, 1])
-
-        biases = tf.get_variable('biases', [output_shape[-1]], initializer=tf.constant_initializer(0.0))
+        biases = bias_variable('biases', [output_shape[-1]])
         deconv = tf.reshape(tf.nn.bias_add(deconv, biases), deconv.get_shape())
+        return deconv
 
-        if with_w:
-            return deconv, w, biases
-        else:
-            return deconv
+
+def deconv2d_with_skipconn(features, s, skip_con, batch_size, num_filters, deconv_name, bn_name):
+    d = deconv2d(leaky_relu(features), [batch_size, s, s, num_filters], name=deconv_name)
+    d = batch_norm(d, bn_name)
+    d = tf.nn.dropout(d, 0.5)
+    d = tf.concat([d, skip_con], 3)  # skipconnection
+    return d
 
 
 def leaky_relu(features):
