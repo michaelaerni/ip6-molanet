@@ -23,7 +23,8 @@ def cgan_pix2pix_generator(
         # generator u-net
 
         s = output_size
-        s2, s4, s8, s16, s32, s64 = int(s / 2), int(s / 4), int(s / 8), int(s / 16), int(s / 32), int(s / 64)
+        s2, s4, s8, s16, s32, s64, s128 = int(s / 2), int(s / 4), int(s / 8), int(s / 16), int(s / 32), int(
+            s / 64), int(s / 128)
 
         # encoder , downsampling
         # 256x256 => 128x128
@@ -43,6 +44,13 @@ def cgan_pix2pix_generator(
         # 8x8 => 4x4
         e6 = conv2d(leaky_relu(bn_e5), g_filter_dim * 8, name='g_e6_conv')
         bn_e6 = batch_norm(e6, 'g_bn_e6')
+        # 4x4 => 2x2
+        e7 = conv2d(leaky_relu(bn_e6), g_filter_dim * 8, name='g_e7_conv')
+        bn_e7 = batch_norm(e7, 'g_bn_e7')
+        # 2x2 => 1x1
+        e8 = conv2d(leaky_relu(bn_e7), g_filter_dim * 8, name='g_e8_conv')
+        bn_e8 = batch_norm(e8, 'g_bn_e8')
+
 
     def deconv2d_skipConn(features, s, skip_con, g_filter_dim_factor, deconv_name, bn_name):
         d = deconv2d(tf.nn.relu(features), [batch_size, s, s, g_filter_dim * g_filter_dim_factor], name=deconv_name)
@@ -53,21 +61,23 @@ def cgan_pix2pix_generator(
 
     # decoder with skip connections
 
-    # deconvolve e6 and add skip connections to e5
-    # d1 is (8 x 8 x g_filter_dim*8*2)
-    d1 = deconv2d_skipConn(bn_e6, s32, bn_e5, 8, 'g_d1', 'g_bn_d1')
-    # d2 is (16 x 16 x g_filter_dim*4*2)
-    d2 = deconv2d_skipConn(d1, s16, bn_e4, 8, 'g_d2', 'g_bn_d2')
-    # d3 is (32 x 32 x g_filter_dim*4*2)
-    d3 = deconv2d_skipConn(d2, s8, bn_e3, 4, 'g_d3', 'g_bn_d3')
-    # d4 is 64 x 64 x g_filter_dim*2*2
-    d4 = deconv2d_skipConn(d3, s4, bn_e2, 2, 'g_d4', 'g_bn_d4')
-    # d5 is 128 x 128 x g_filter_dim*2*2
-    d5 = deconv2d_skipConn(d4, s2, e1, 1, 'g_d5', 'g_bn_d5')
-    # d6 is 256 x 256
-    d6 = deconv2d(tf.nn.relu(d5), [batch_size, s, s, output_color_channels], name='g_d6')
+    # deconvolve e8 and add skip connections to e7
+    d1 = deconv2d_skipConn(bn_e8, s128, bn_e7, 8, 'g_d1', 'g_bn_d1')
+    d2 = deconv2d_skipConn(d1, s64, bn_e6, 8, 'g_d2', 'g_bn_d3')
+    # d3 is (8 x 8 x g_filter_dim*8*2)
+    d3 = deconv2d_skipConn(d2, s32, bn_e5, 8, 'g_d3', 'g_bn_d3')
+    # d4 is (16 x 16 x g_filter_dim*4*2)
+    d4 = deconv2d_skipConn(d3, s16, bn_e4, 8, 'g_d4', 'g_bn_d4')
+    # d5 is (32 x 32 x g_filter_dim*4*2)
+    d5 = deconv2d_skipConn(d4, s8, bn_e3, 4, 'g_d5', 'g_bn_d5')
+    # d6 is 64 x 64 x g_filter_dim*2*2
+    d6 = deconv2d_skipConn(d5, s4, bn_e2, 2, 'g_d6', 'g_bn_d6')
+    # d7 is 128 x 128 x g_filter_dim*2*2
+    d7 = deconv2d_skipConn(d6, s2, e1, 1, 'g_d7', 'g_bn_d7')
+    # d8 is 256 x 256
+    d8 = deconv2d(tf.nn.relu(d7), [batch_size, s, s, output_color_channels], name='g_d8')
 
-    return tf.nn.tanh(d6)
+    return tf.nn.tanh(d8)
 
 
 def cgan_pix2pix_discriminator(
