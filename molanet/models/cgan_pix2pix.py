@@ -1,4 +1,6 @@
 from __future__ import division
+
+import numpy as np
 import tensorflow as tf
 
 import molanet.operations as ops
@@ -8,17 +10,16 @@ use_gpu = False
 
 def cgan_pix2pix_generator(
         image,
-        scope="generator",
-        xydim=256,
-        zdim=3,
+        input_size=256,
+        input_color_channels=3,
         output_size=256,
-        output_zdim=3,
-        batch_size=1
+        output_color_channels=3,
+        batch_size=1,
+        g_filter_dim=64
 ):
-    # image is (xydim * xydim * zdim)
+    # image is assumed to be 256 x 256 (xydim * xydim * zdim)
 
-    g_filter_dim = 64
-    with tf.variable_scope(scope):
+    with tf.variable_scope("generator"):
         # generator u-net
 
         s = output_size
@@ -48,6 +49,7 @@ def cgan_pix2pix_generator(
         d = batch_norm(d, bn_name)
         d = tf.nn.dropout(d, 0.5)
         d = tf.concat([d, skip_con], 3)  # skipconnection
+        return d
 
     # decoder with skip connections
 
@@ -63,27 +65,25 @@ def cgan_pix2pix_generator(
     # d5 is 128 x 128 x g_filter_dim*2*2
     d5 = deconv2d_skipConn(d4, s2, e1, 1, 'g_d5', 'g_bn_d5')
     # d6 is 256 x 256
-    d6 = deconv2d(tf.nn.relu(d5), [batch_size, s, s, output_zdim], name='g_d6')
+    d6 = deconv2d(tf.nn.relu(d5), [batch_size, s, s, output_color_channels], name='g_d6')
 
     return tf.nn.tanh(d6)
 
 
 def cgan_pix2pix_discriminator(
-        image,
+        image: np.ndarray,
         batch_size=1,
-        y=None,
         reuse=False,
-
+        d_filter_dim=64
 ):
     with tf.variable_scope("discriminator", reuse=reuse):
-        d_filter_dim = 64
         c1 = leaky_relu(conv2d(image, d_filter_dim, name='d_c1'))  # 256 => 128
         c2 = leaky_relu(conv2d(c1, d_filter_dim * 2, name='d_c2'))  # 128 => 64
         c3 = leaky_relu(conv2d(c2, d_filter_dim * 4, name='d_c3'))  # 64 => 32
         c4 = leaky_relu(conv2d(c3, d_filter_dim * 8, name='d_c4'))  # 32 => 16
 
         c4_reshaped = tf.reshape(c4, [batch_size, -1])
-        bias = tf.get_variable("d_bias_linear", 1, initializer=tf.constant_initializer(0.0))
+        bias = bias_variable('d_bias_linear', 1)
         weights = tf.get_variable("d_weights_linear", [c4_reshaped.get_shape().as_list()[1], 1], tf.float32,
                                   tf.random_normal_initializer(stddev=0.02))
 
@@ -132,9 +132,9 @@ def deconv2d(input_, output_shape,
 
 
 def leaky_relu(features):
-    ops.leaky_relu(features, 0.2)
+    return ops.leaky_relu(features, 0.2)
 
 
 def batch_norm(features, name, decay=0.9, epsilon=1e-5):
-    tf.contrib.layers.batch_norm(features, decay=decay, updates_collections=None, epsilon=epsilon, scale=True,
-                                 scope=name)
+    return tf.contrib.layers.batch_norm(features, decay=decay, updates_collections=None, epsilon=epsilon, scale=True,
+                                        scope=name)

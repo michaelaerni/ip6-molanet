@@ -1,41 +1,42 @@
 import os
-
-import math
 import random
-
 import time
 
-from molanet.models.cgan_pix2pix import *
 import numpy as np
+import tensorflow as tf
 from PIL import Image
+
+from molanet.models.cgan_pix2pix import cgan_pix2pix_discriminator, cgan_pix2pix_generator
 
 
 class Model(object):
-    def __init__(self, batch_size, image_size, image_color_dim, l1_lambda=100):
+    def __init__(self, batch_size, image_size, src_color_dim, target_color_dim, l1_lambda=100):
         self.batch_size = batch_size
         self.image_size = image_size
-        self.image_color_dim = image_color_dim
+        self.src_color_dim = src_color_dim
+        self.target_color_dim = target_color_dim
         self.L1_lambda = l1_lambda
 
-    def build_model(self):
+    def build_model(self, num_feature_maps):
         self.real_data_source = tf.placeholder(tf.float32,
                                                [self.batch_size, self.image_size, self.image_size,
-                                                self.image_color_dim],
+                                                self.src_color_dim],
                                                name='source_images')
         self.real_data_target = tf.placeholder(tf.float32,
                                                [self.batch_size, self.image_size, self.image_size,
-                                                self.image_color_dim],
+                                                self.target_color_dim],
                                                name='target_images')
 
         self.real_A = self.real_data_source
         self.real_B = self.real_data_target
 
-        self.fake_B = cgan_pix2pix_generator(self.real_A, batch_size=batch_size, g_filter_dim=num_feature_maps)
+        self.fake_B = cgan_pix2pix_generator(self.real_A, batch_size=self.batch_size, g_filter_dim=num_feature_maps,
+                                             output_color_channels=1)
 
         self.real_AB = tf.concat([self.real_A, self.real_B], 3)
         self.fake_AB = tf.concat([self.real_A, self.fake_B], 3)
-        self.D, self.D_logits = cgan_pix2pix_discriminator(self.real_AB, batch_size=batch_size, reuse=False)
-        self.D_, self.D_logits_ = cgan_pix2pix_discriminator(self.fake_AB, batch_size=batch_size, reuse=True)
+        self.D, self.D_logits = cgan_pix2pix_discriminator(self.real_AB, batch_size=self.batch_size, reuse=False)
+        self.D_, self.D_logits_ = cgan_pix2pix_discriminator(self.fake_AB, batch_size=self.batch_size, reuse=True)
 
         # self.fake_B_sample = self.sampler(self.real_A) #TODO what is dis
 
@@ -64,21 +65,8 @@ class Model(object):
         self.d_vars = [var for var in t_vars if 'd_' in var.name]
         self.g_vars = [var for var in t_vars if 'g_' in var.name]
 
-    def load_random_samples(self, num_images, source_dir, target_dir):
-        data = np.random.choice(np.arange(num_images), self.batch_size)
-        source, target = [load_image(sample_file, source_dir, target_dir) for sample_file in data]
 
-
-def load_image(number: int, source_dir, target_dir):
-    def get_filename(number: int) -> str:
-        if (number == 0): return 'ISIC_0000000.jpg'
-        digits = int(math.log(number, 10))
-        zeros_to_add = 6 - int(digits)
-        number = str(number)
-        for x in range(zeros_to_add):
-            number = '0' + number
-        return 'ISIC_%s.jpg' % number
-
+def load_image(name: str, source_dir, target_dir):
     def transformImageNameSource(name):
         return os.path.join(source_dir, name)
 
@@ -86,93 +74,127 @@ def load_image(number: int, source_dir, target_dir):
         name = name.replace('.jpg', '_Segmentation.png')
         return os.path.join(target_dir, name)
 
-    image_name = get_filename(number)
-    source_image = Image.open(transformImageNameSource(image_name))
-    target_image = Image.open(transformImageNameSource(image_name))
+    source_image = Image.open(transformImageNameSource(name))
+    target_image = Image.open(transformImageNameSource(name))
 
     # TODO think about proper resizing... is dis hacky? I don't know
     size = 256, 256
-    source = source_image.thumbnail(size, Image.ANTIALIAS)
-    target = target_image.thumbnail(size, Image.ANTIALIAS)
+    source = source_image.resize(size, Image.BICUBIC)
+    target = target_image.resize(size, Image.BICUBIC)
+    target = target.convert('1')  # to black and white
 
     return np.array(source), np.array(target)
 
 
-def get_image_batch(batch_size, images_count, source_dir, target_dir) -> [np.ndarray,np.ndarray] :
+def get_image_batch(batch_size, source_file_names, source_dir, target_dir) -> [np.ndarray, np.ndarray]:
     # TODO chances are we don't get fucked by rng
-    indices = [random.randint(1, images_count) for _ in range(batch_size)]
-    images = [load_image(x, source_dir, target_dir) for x in indices]
+    indices = [random.randint(1, len(source_file_names)) for _ in range(batch_size)]
+    images = [load_image(source_file_names[i], source_dir, target_dir) for i in indices]
     return images
 
 
 # train
 def train():
-    restore_iteration = None
-    iterations = 50000
-    saver = tf.train.Saver()
+    source_dir = r'C:\Users\pdcwi\Documents\IP6 nonsynced\pix2pix-poc-data\training\source'
+    target_dir = r'C:\Users\pdcwi\Documents\IP6 nonsynced\pix2pix-poc-data\training\target'
+    sourcefiles = [f for f in os.listdir(source_dir) if os.path.isfile(os.path.join(source_dir, f))]
+
     batch_size = 1
-    sess = None
-    is_grayscale = True
     size = 256
-    model = Model(batch_size, size, 1)
-    model.build_model()
+    num_feature_maps = 64
     sample_dir = "./sample"  # Generated samples
     model_directory = "./models"  # Model
+    restore_iteration = None
+    iterations = 50000
+    is_grayscale = False
 
-    if restore_iteration is not None and restore_iteration > 0:
-        iteration_start = restore_iteration + 1
-        saver.restore(sess, "{model_directory}/model-{restore_iteration}.cptk")
-    else:
-        iteration_start = 0
+    with tf.Session() as sess:
+        model = Model(batch_size, size, 3, 1)
+        model.build_model(num_feature_maps)
 
-    # Optimizers
-    disc_optim = tf.train.AdamOptimizer(learning_rate=0.0002, beta1=0.5)  # TODO: pix2pix params
-    gen_optim = tf.train.AdamOptimizer(learning_rate=0.0002, beta1=0.5)  # TODO: pix2pix params
-
-    disc_update_step = disc_optim.minimize(model.d_loss, var_list=model.d_vars)
-    gen_update_step = gen_optim.minimize(model.g_loss, var_list=model.g_vars)
-
-    start_time = time.time()
-    for iteration in range(iteration_start, iterations):
-        # TODO hardcoded
-        (batch_src,batch_target) = get_image_batch(batch_size, 11402,
-                                       source_dir=r'C:\Users\pdcwi\Documents\IP6 nonsynced\pix2pix-poc-data\training\source',
-                                       target_dir=r'C:\Users\pdcwi\Documents\IP6 nonsynced\pix2pix-poc-data\training\target')
-        batch_src = (batch_src / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
-        batch_target = (batch_target / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
-
-        # dealing with batchsize > 1
-        batch = None
-        if (is_grayscale):
-            batch_src = np.array(batch_src).astype(np.float32)[:, :, :, None]
-            batch_target = np.array(batch_target).astype(np.float32)[:, :, :, None]
-
+        saver = tf.train.Saver()
+        if restore_iteration is not None and restore_iteration > 0:
+            iteration_start = restore_iteration + 1
+            saver.restore(sess, "{model_directory}/model-{restore_iteration}.cptk")
         else:
-            batch_src = np.array(batch_src).astype(np.float32)
-            batch_target = np.array(batch_target).astype(np.float32)
+            iteration_start = 0
 
-        # Update discriminator
-        _, d_loss = sess.run([disc_update_step, model.d_loss],
-                             feed_dict={model.real_data_source: batch_src, model.real_data_target: batch_target})
+        # Optimizers
+        disc_optim = tf.train.AdamOptimizer(learning_rate=0.0002, beta1=0.5) \
+            .minimize(model.d_loss, var_list=model.d_vars)  # TODO: pix2pix params
 
-        # Update generator twice
-        _, g_loss = sess.run([gen_update_step, model.g_loss],
-                             feed_dict={model.real_data_source: batch_src, model.real_data_target: batch_target})
-        _, g_loss = sess.run([gen_update_step, model.g_loss],
-                             feed_dict={model.real_data_source: batch_src, model.real_data_target: batch_target})
+        gen_optim = tf.train.AdamOptimizer(learning_rate=0.0002, beta1=0.5) \
+            .minimize(model.d_loss, var_list=model.d_vars)  # TODO: pix2pix params
 
-        errD_fake = model.d_loss_fake.eval({model.real_data_target: batch_target, model.real_data_source: batch_src})
-        errD_real = model.d_loss_real.eval({model.real_data_target: batch_target, model.real_data_source: batch_src})
-        errG = model.g_loss.eval({model.real_data_target: batch_target, model.real_data_source: batch_src})
+        init_op = tf.global_variables_initializer()
+        sess.run(init_op)
 
-        print("Epoch: [%2d] time: %4.4f, d_loss: %.8f, g_loss: %.8f" \
-              % (iteration, time.time() - start_time, errD_fake + errD_real, errG))
+        # logging
+        writer = tf.summary.FileWriter("./logs", sess.graph)
+        g_sum = tf.summary.merge([model.d__sum,
+                                  model.fake_B_sum, model.d_loss_fake_sum, model.g_loss_sum])
+        d_sum = tf.summary.merge([model.d_sum, model.d_loss_real_sum, model.d_loss_sum])
 
-        # if iteration % 100 == 1:
-        #    sample_model(args.sample_dir, epoch, idx)
+        # disc_update_step = disc_optim.minimize(model.d_loss, var_list=model.d_vars)
+        # gen_update_step = gen_optim.minimize(model.g_loss, var_list=model.g_vars)
 
-        if iteration % 500 == 2:
-            save(saver, model_directory, iteration)
+        start_time = time.time()
+        for iteration in range(iteration_start, iterations):
+            # TODO hardcoded
+            batch = get_image_batch(batch_size, sourcefiles,
+                                    source_dir=source_dir,
+                                    target_dir=target_dir)
+            (batch_src, batch_target) = batch[0]
+            batch_src = (batch_src / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
+            batch_target = (batch_target / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
+
+            # dealing with batchsize > 1
+            batch = None
+            # print('before src ' + str(batch_src.shape))
+            # print('before trgt ' + str(batch_target.shape))
+
+            #   if (is_grayscale):
+            #      batch_src = np.array(batch_src).astype(np.float32)[:, :, :, None]
+            # else:
+            # batch_src = np.array(batch_src).astype(np.float32)
+            batch_src = np.array(batch_src).astype(np.float32)[None, :, :, :]
+            batch_target = np.array(batch_target).astype(np.float32)[None, :, :, None]
+            # print('after src ' + str(batch_src.shape))
+            # print('after trgt ' + str(batch_target.shape))
+
+            _, summary_str = sess.run([disc_optim, d_sum],
+                                      feed_dict={model.real_data_source: batch_src,
+                                                 model.real_data_target: batch_target})
+
+            writer.add_summary(summary_str, iteration)
+
+            # Update G network twice
+            _, summary_str = sess.run([gen_optim, g_sum],
+                                      feed_dict={model.real_data_source: batch_src,
+                                                 model.real_data_target: batch_target})
+            writer.add_summary(summary_str, iteration)
+            _, summary_str = sess.run([gen_optim, g_sum],
+                                      feed_dict={model.real_data_source: batch_src,
+                                                 model.real_data_target: batch_target})
+            writer.add_summary(summary_str, iteration)
+
+            errD_fake = model.d_loss_fake.eval(
+                {model.real_data_target: batch_target, model.real_data_source: batch_src})
+            errD_real = model.d_loss_real.eval(
+                {model.real_data_target: batch_target, model.real_data_source: batch_src})
+            errG = model.g_loss.eval({model.real_data_target: batch_target, model.real_data_source: batch_src})
+
+            print("Epoch: [%2d] time: %4.4f, d_loss: %.8f, g_loss: %.8f" \
+                  % (iteration, time.time() - start_time, errD_fake + errD_real, errG))
+
+            # if iteration % 100 == 1:
+            # gib nice picture output :)
+
+
+            sample_model(sourcefiles, iteration, iteration, sess, source_dir, target_dir, model)
+
+            if iteration % 500 == 2:
+                save(sess, saver, model_directory, iteration)
 
 
 def save(sess, saver, checkpoint_dir, step):
@@ -182,3 +204,40 @@ def save(sess, saver, checkpoint_dir, step):
         os.makedirs(checkpoint_dir)
 
     saver.save(sess, os.path.join(checkpoint_dir, model_name), global_step=step)
+
+
+def sample_model(sample_dir, epoch, idx, sess, source_dir, target_dir, model: Model):
+    batch = get_image_batch(1, sample_dir, source_dir, target_dir)
+    (batch_src, batch_target) = batch[0]
+    original_source = batch_src.copy()
+    original_target = batch_target.copy()
+    batch_src = (batch_src / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
+    batch_target = (batch_target / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
+    batch_src = np.array(batch_src).astype(np.float32)[None, :, :, :]
+    batch_target = np.array(batch_target).astype(np.float32)[None, :, :, None]
+
+    sample, d_loss, g_loss = sess.run(
+        [model.fake_B, model.d_loss, model.g_loss],
+        feed_dict={model.real_data_source: batch_src,
+                   model.real_data_target: batch_target}
+    )
+
+    # convert images from [-1,1] to [0,1]
+    sample = tf.squeeze(sample).eval()  # fron [1,255,255,1] tensor to [255,255] numpy
+    sample = (sample + 1) / 2
+    samplergb = np.repeat(sample[:, :, np.newaxis], 3, axis=2)  # go from blackwhite to rgb
+    original_target_rgb = np.repeat(original_target[:, :, np.newaxis], 3, axis=2)  # go from blackwhite to rgb
+
+    # array = np.concatenate(original_source,sample,original_target)
+
+    im_src = Image.fromarray(np.uint8(original_source) * 255)
+    im_src.save('source.png')
+    im_trg = Image.fromarray(np.uint8(original_target_rgb) * 255)
+    im_trg.save('target.png')
+    im_sample = Image.fromarray(np.uint8(samplergb) * 255)
+    im_sample.save('sample.png')
+    print("[Sample] d_loss: {:.8f}, g_loss: {:.8f}".format(d_loss, g_loss))
+
+
+if __name__ == '__main__':
+    train()
