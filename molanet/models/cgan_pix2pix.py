@@ -6,7 +6,7 @@ import tensorflow as tf
 import molanet.operations as ops
 
 use_gpu = False
-
+IMAGE_SIZE = 32
 
 def cgan_pix2pix_generator(
         image: np.ndarray,
@@ -90,8 +90,8 @@ def cgan_pix2pix_discriminator(
 
 
 def weight_variable(name, shape):
-    # TODO test using random_normal_initializer instead of truncated
-    return tf.get_variable(name, shape, initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02))
+    # TODO test using random_normal_initializer instead of truncated_normal_initializer
+    return tf.get_variable(name, shape, initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
 
 
 def bias_variable(name, shape):
@@ -130,7 +130,7 @@ def deconv2d_with_skipconn(features, skip_con, batch_size, num_filters, deconv_n
         2]  # doesn't actually have to hold true in principle but it's good practice
     size_after_deconv = int(skip_con.shape[1])
 
-    d = deconv2d(leaky_relu(features), [batch_size, size_after_deconv, size_after_deconv, num_filters],
+    d = deconv2d(tf.nn.relu(features), [batch_size, size_after_deconv, size_after_deconv, num_filters],
                  name=deconv_name)
     d = batch_norm(d, bn_name)
     d = tf.nn.dropout(d, 0.5)

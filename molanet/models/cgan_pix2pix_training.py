@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 from PIL import Image
 
-from molanet.models.cgan_pix2pix import cgan_pix2pix_discriminator, cgan_pix2pix_generator
+from molanet.models.cgan_pix2pix import cgan_pix2pix_discriminator, cgan_pix2pix_generator, IMAGE_SIZE
 
 
 class Model(object):
@@ -67,7 +67,7 @@ class Model(object):
         self.g_vars = [var for var in t_vars if 'g_' in var.name]
 
 
-def load_image(name: str, source_dir, target_dir, size=32):
+def load_image(name: str, source_dir, target_dir, size=IMAGE_SIZE):
     def transformImageNameSource(name):
         return os.path.join(source_dir, name)
 
@@ -110,7 +110,7 @@ def train():
 
     use_random_image_as_sample = False
     batch_size = 1
-    size = 32
+    size = IMAGE_SIZE
     num_feature_maps = 64
 
     restore_iteration = None
