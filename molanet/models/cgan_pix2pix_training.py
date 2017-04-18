@@ -228,16 +228,11 @@ def sample_model(sample_dir, epoch, idx, sess, source_dir, target_dir, model: Mo
     samplergb = np.repeat(sample[:, :, np.newaxis], 3, axis=2)  # go from blackwhite to rgb
     original_target_rgb = np.repeat(original_target[:, :, np.newaxis], 3, axis=2)  # go from blackwhite to rgb
 
-    # array = np.concatenate(original_source,sample,original_target)
+    array = np.concatenate((original_source, samplergb, original_target_rgb), axis=1)
 
-    im_src = Image.fromarray(np.uint8(original_source) * 255)
-    im_src.save('source.png')
-    im_trg = Image.fromarray(np.uint8(original_target_rgb) * 255)
-    im_trg.save('target.png')
-    im_sample = Image.fromarray(np.uint8(samplergb) * 255)
-    im_sample.save('sample.png')
+    im_src = Image.fromarray(np.uint8(array) * 255)
+    im_src.save('oha.png')
     print("[Sample] d_loss: {:.8f}, g_loss: {:.8f}".format(d_loss, g_loss))
-
 
 if __name__ == '__main__':
     train()
