@@ -75,7 +75,7 @@ def load_image(name: str, source_dir, target_dir):
         return os.path.join(target_dir, name)
 
     source_image = Image.open(transformImageNameSource(name))
-    target_image = Image.open(transformImageNameSource(name))
+    target_image = Image.open(transformImageNameTarget(name))
 
     # TODO think about proper resizing... is dis hacky? I don't know
     size = 256, 256
@@ -88,7 +88,7 @@ def load_image(name: str, source_dir, target_dir):
 
 def get_image_batch(batch_size, source_file_names, source_dir, target_dir) -> [np.ndarray, np.ndarray]:
     # TODO chances are we don't get fucked by rng
-    indices = [random.randint(1, len(source_file_names)) for _ in range(batch_size)]
+    indices = [random.randint(0, len(source_file_names) - 1) for _ in range(batch_size)]
     images = [load_image(source_file_names[i], source_dir, target_dir) for i in indices]
     return images
 
@@ -187,11 +187,9 @@ def train():
             print("Epoch: [%2d] time: %4.4f, d_loss: %.8f, g_loss: %.8f" \
                   % (iteration, time.time() - start_time, errD_fake + errD_real, errG))
 
-            # if iteration % 100 == 1:
-            # gib nice picture output :)
-
-
-            sample_model(sourcefiles, iteration, iteration, sess, source_dir, target_dir, model)
+            if iteration % 100 == 1:
+                # gib nice picture output :)
+                sample_model(sourcefiles, iteration, sess, source_dir, target_dir, model)
 
             if iteration % 500 == 2:
                 save(sess, saver, model_directory, iteration)
@@ -206,8 +204,24 @@ def save(sess, saver, checkpoint_dir, step):
     saver.save(sess, os.path.join(checkpoint_dir, model_name), global_step=step)
 
 
-def sample_model(sample_dir, epoch, idx, sess, source_dir, target_dir, model: Model):
-    batch = get_image_batch(1, sample_dir, source_dir, target_dir)
+def save_ndarrays_asimage(filename: str, *arrays: np.ndarray):
+    def fix_dimensions(array):
+        if array.ndim > 3 or array.ndim < 2: raise ValueError('arrays must have 2 or 3 dimensions')
+        if array.ndim == 2:
+            array = np.repeat(array[:, :, np.newaxis], 3, axis=2)  # go from blackwhite to rgb
+        return array
+
+    if len(arrays) > 1:
+        arrays = [fix_dimensions(array) for array in arrays]
+        arrays = np.concatenate(arrays, axis=1)
+
+    # arrays is just a big 3-dim matrix
+    im = Image.fromarray(np.uint8(arrays))
+    im.save(filename)
+
+
+def sample_model(filenames, epoch, sess, source_dir, target_dir, model: Model):
+    batch = get_image_batch(1, filenames, source_dir, target_dir)
     (batch_src, batch_target) = batch[0]
     original_source = batch_src.copy()
     original_target = batch_target.copy()
@@ -222,17 +236,14 @@ def sample_model(sample_dir, epoch, idx, sess, source_dir, target_dir, model: Mo
                    model.real_data_target: batch_target}
     )
 
-    # convert images from [-1,1] to [0,1]
-    sample = tf.squeeze(sample).eval()  # fron [1,255,255,1] tensor to [255,255] numpy
-    sample = (sample + 1) / 2
-    samplergb = np.repeat(sample[:, :, np.newaxis], 3, axis=2)  # go from blackwhite to rgb
-    original_target_rgb = np.repeat(original_target[:, :, np.newaxis], 3, axis=2)  # go from blackwhite to rgb
+    # convert images from [-1,1] to [0,255]
+    # from shape [1,255,255,1] : tensor to shape [255,255] : nddarray
+    sample = (tf.squeeze(sample).eval() + 1) / 2 * 255
 
-    array = np.concatenate((original_source, samplergb, original_target_rgb), axis=1)
-
-    im_src = Image.fromarray(np.uint8(array) * 255)
-    im_src.save('oha.png')
+    if not os.path.exists('samples'): os.mkdir('samples')
+    save_ndarrays_asimage('samples/sample_%d.png' % epoch, original_source, sample, original_target * 255)
     print("[Sample] d_loss: {:.8f}, g_loss: {:.8f}".format(d_loss, g_loss))
+
 
 if __name__ == '__main__':
     train()
