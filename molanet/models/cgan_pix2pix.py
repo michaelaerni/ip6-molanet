@@ -20,27 +20,23 @@ def cgan_pix2pix_generator(
     with tf.variable_scope("generator"):
         # generator u-net
 
-        s = output_size
-        s2, s4, s8, s16, s32, s64, s128 = int(s / 2), int(s / 4), int(s / 8), int(s / 16), int(s / 32), int(
-            s / 64), int(s / 128)
-
         # encoder , downsampling
         # 256x256 => 128x128
-        e1 = conv2d(image, g_filter_dim, name='g_e1_conv')  # 128 x 128
+        # e1 = conv2d(image, g_filter_dim, name='g_e1_conv')  # 128 x 128
         # 128x128=> 64x64
-        e2 = conv2d(leaky_relu(e1), g_filter_dim * 2, name='g_e2_conv')
-        bn_e2 = batch_norm(e2, 'g_bn_e2')
+        # e2 = conv2d(leaky_relu(e1), g_filter_dim * 2, name='g_e2_conv')
+        # bn_e2 = batch_norm(e2, 'g_bn_e2')
         # 64 x 64 => 32 x 32
-        e3 = conv2d(leaky_relu(bn_e2), g_filter_dim * 4, name='g_e3_conv')
-        bn_e3 = batch_norm(e3, 'g_bn_e3')
+        # e3 = conv2d(leaky_relu(bn_e2), g_filter_dim * 4, name='g_e3_conv')
+        # bn_e3 = batch_norm(e3, 'g_bn_e3')
         # 32 x 32 => 16 x 16
-        e4 = conv2d(leaky_relu(bn_e3), g_filter_dim * 8, name='g_e4_conv')
-        bn_e4 = batch_norm(e4, 'g_bn_e4')
+        e4 = conv2d(image, g_filter_dim, name='g_e4_conv')
+        # bn_e4 = batch_norm(e4, 'g_bn_e4')
         # 16x16 => 8x8
-        e5 = conv2d(leaky_relu(bn_e4), g_filter_dim * 8, name='g_e5_conv')
+        e5 = conv2d(leaky_relu(e4), g_filter_dim * 2, name='g_e5_conv')
         bn_e5 = batch_norm(e5, 'g_bn_e5')
         # 8x8 => 4x4
-        e6 = conv2d(leaky_relu(bn_e5), g_filter_dim * 8, name='g_e6_conv')
+        e6 = conv2d(leaky_relu(bn_e5), g_filter_dim * 4, name='g_e6_conv')
         bn_e6 = batch_norm(e6, 'g_bn_e6')
         # 4x4 => 2x2
         e7 = conv2d(leaky_relu(bn_e6), g_filter_dim * 8, name='g_e7_conv')
@@ -52,22 +48,24 @@ def cgan_pix2pix_generator(
     # decoder with skip connections
 
     # deconvolve e8 and add skip connections to e7
-    d1 = deconv2d_with_skipconn(bn_e8, s128, bn_e7, batch_size, g_filter_dim * 8, 'g_d1', 'g_bn_d1')
-    d2 = deconv2d_with_skipconn(d1, s64, bn_e6, batch_size, g_filter_dim * 8, 'g_d2', 'g_bn_d3')
+    d1 = deconv2d_with_skipconn(bn_e8, bn_e7, batch_size, g_filter_dim * 8, 'g_d1', 'g_bn_d1')
+    d2 = deconv2d_with_skipconn(d1, bn_e6, batch_size, g_filter_dim * 8, 'g_d2', 'g_bn_d2')
     # d3 is (8 x 8 x g_filter_dim*8*2)
-    d3 = deconv2d_with_skipconn(d2, s32, bn_e5, batch_size, g_filter_dim * 8, 'g_d3', 'g_bn_d3')
+    d3 = deconv2d_with_skipconn(d2, bn_e5, batch_size, g_filter_dim * 4, 'g_d3', 'g_bn_d3')
     # d4 is (16 x 16 x g_filter_dim*4*2)
-    d4 = deconv2d_with_skipconn(d3, s16, bn_e4, batch_size, g_filter_dim * 8, 'g_d4', 'g_bn_d4')
+    d4 = deconv2d_with_skipconn(d3, e4, batch_size, g_filter_dim * 2, 'g_d4', 'g_bn_d4')
     # d5 is (32 x 32 x g_filter_dim*4*2)
-    d5 = deconv2d_with_skipconn(d4, s8, bn_e3, batch_size, g_filter_dim * 4, 'g_d5', 'g_bn_d5')
-    # d6 is 64 x 64 x g_filter_dim*2*2
-    d6 = deconv2d_with_skipconn(d5, s4, bn_e2, batch_size, g_filter_dim * 2, 'g_d6', 'g_bn_d6')
-    # d7 is 128 x 128 x g_filter_dim*2*2
-    d7 = deconv2d_with_skipconn(d6, s2, e1, batch_size, g_filter_dim, 'g_d7', 'g_bn_d7')
-    # d8 is 256 x 256
-    d8 = deconv2d(tf.nn.relu(d7), [batch_size, s, s, output_color_channels], name='g_d8')
+    # d5 = deconv2d_with_skipconn(d4, s8, bn_e3, batch_size, g_filter_dim * 4, 'g_d5', 'g_bn_d5')
+    d5 = deconv2d(tf.nn.relu(d4), [batch_size, output_size, output_size, output_color_channels], name='g_d5')
+    ## d6 is 64 x 64 x g_filter_dim*2*2
+    # d6 = deconv2d_with_skipconn(d5, s4, bn_e2, batch_size, g_filter_dim * 2, 'g_d6', 'g_bn_d6')
+    ## d7 is 128 x 128 x g_filter_dim*2*2
+    # d7 = deconv2d_with#_skipconn(d6, s2, e1, batch_size, g_filter_dim, 'g_d7', 'g_bn_d7')
+    ## d8 is 256 x 256
+    # d8 = deconv2d(tf.nn.relu(d7), [batch_size, s, s, output_color_channels], name='g_d8')
 
-    return tf.nn.tanh(d8)
+    # return tf.nn.tanh(d8)
+    return tf.nn.tanh(d5)
 
 
 def cgan_pix2pix_discriminator(
@@ -77,10 +75,10 @@ def cgan_pix2pix_discriminator(
         d_filter_dim=64
 ):
     with tf.variable_scope("discriminator", reuse=reuse):
-        c1 = leaky_relu(conv2d(image, d_filter_dim, name='d_c1'))  # 256 => 128
-        c2 = leaky_relu(conv2d(c1, d_filter_dim * 2, name='d_c2'))  # 128 => 64
-        c3 = leaky_relu(conv2d(c2, d_filter_dim * 4, name='d_c3'))  # 64 => 32
-        c4 = leaky_relu(conv2d(c3, d_filter_dim * 8, name='d_c4'))  # 32 => 16
+        # c1 = leaky_relu(conv2d(image, d_filter_dim, name='d_c1'))  # 256 => 128
+        # c2 = leaky_relu(conv2d(c1, d_filter_dim * 2, name='d_c2'))  # 128 => 64
+        # c3 = leaky_relu(conv2d(c2, d_filter_dim * 4, name='d_c3'))  # 64 => 32
+        c4 = leaky_relu(conv2d(image, d_filter_dim, name='d_c4'))  # 32 => 16
 
         c4_reshaped = tf.reshape(c4, [batch_size, -1])
         bias = bias_variable('d_bias_linear', 1)
@@ -125,8 +123,15 @@ def deconv2d(input_, output_shape,
         return deconv
 
 
-def deconv2d_with_skipconn(features, s, skip_con, batch_size, num_filters, deconv_name, bn_name):
-    d = deconv2d(leaky_relu(features), [batch_size, s, s, num_filters], name=deconv_name)
+def deconv2d_with_skipconn(features, skip_con, batch_size, num_filters, deconv_name, bn_name):
+    assert features.shape[1] * 2 == skip_con.shape[1]
+    assert features.shape[2] * 2 == skip_con.shape[2]
+    assert skip_con.shape[1] == skip_con.shape[
+        2]  # doesn't actually have to hold true in principle but it's good practice
+    size_after_deconv = int(skip_con.shape[1])
+
+    d = deconv2d(leaky_relu(features), [batch_size, size_after_deconv, size_after_deconv, num_filters],
+                 name=deconv_name)
     d = batch_norm(d, bn_name)
     d = tf.nn.dropout(d, 0.5)
     d = tf.concat([d, skip_con], 3)  # skipconnection
