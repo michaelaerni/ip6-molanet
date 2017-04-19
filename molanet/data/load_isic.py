@@ -71,8 +71,8 @@ class IsicLoader(object):
     def create_uuid(self, image_id):
         return f"{self._data_source}_{image_id}"
 
-    def load_samples(self) -> Iterable[MoleSample]:
-        batch_offset = 0
+    def load_samples(self, offset=0) -> Iterable[MoleSample]:
+        batch_offset = offset
 
         current_batch = self.fetch_image_ids(batch_offset)
         while len(current_batch) > 0:
@@ -107,6 +107,8 @@ class IsicLoader(object):
 def create_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser("Load ISIC images and segmentations into a database")
 
+    parser.add_argument("--offset", type=int, default=0, help="Starting offset in data set")
+
     parser.add_argument("--database-host", type=str, default="localhost", help="Target database host")
     parser.add_argument("--database", type=str, default="molanet", help="Target database name")
     parser.add_argument("--database-username", default=None, help="Target database username")
@@ -129,11 +131,14 @@ if __name__ == "__main__":
     loader = IsicLoader(args.api_url, data_source, args.fetch_batch_size)
 
     with DatabaseConnection(args.database_host, args.database, username=args.database_username, password=args.database_password) as db:
-        removed_count = db.clear_data(data_source)
-        print(f"Cleared data set, deleted {removed_count} rows")
+        if args.offset == 0:
+            removed_count = db.clear_data(data_source)
+            print(f"Cleared data set, deleted {removed_count} rows")
+        else:
+            print(f"Starting at offset {args.offset}, existing data will not be cleared")
 
-        sample_count = 0
-        for sample in loader.load_samples():
+        sample_count = args.offset
+        for sample in loader.load_samples(offset=args.offset):
             sample_count += 1
 
             db.insert(sample)
