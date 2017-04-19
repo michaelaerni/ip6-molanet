@@ -81,7 +81,7 @@ def load_image(name: str, source_dir, target_dir, size=IMAGE_SIZE):
     # TODO think about proper resizing... is dis hacky? I don't know
     size = size, size
     source = source_image.resize(size, Image.BICUBIC)
-    target = target_image.resize(size, Image.BICUBIC)
+    target = target_image.resize(size, Image.NEAREST)
     target = target.convert('1')  # to black and white
 
     return np.array(source).astype(np.float32), np.array(target).astype(np.float32)
