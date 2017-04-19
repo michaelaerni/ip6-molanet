@@ -32,7 +32,7 @@ class Model(object):
         self.real_B = self.real_data_target
 
         self.fake_B = cgan_pix2pix_generator(self.real_A, batch_size=self.batch_size, g_filter_dim=num_feature_maps,
-                                             output_color_channels=1, output_size=32)
+                                             output_color_channels=1, output_size=self.image_size)
 
         self.real_AB = tf.concat([self.real_A, self.real_B], 3)
         self.fake_AB = tf.concat([self.real_A, self.fake_B], 3)
@@ -84,7 +84,7 @@ def load_image(name: str, source_dir, target_dir, size=IMAGE_SIZE):
     target = target_image.resize(size, Image.BICUBIC)
     target = target.convert('1')  # to black and white
 
-    return np.array(source), np.array(target)
+    return np.array(source).astype(np.float32), np.array(target).astype(np.float32)
 
 
 def get_image_batch(batch_size, source_file_names, source_dir, target_dir) -> [np.ndarray, np.ndarray]:
@@ -96,8 +96,8 @@ def get_image_batch(batch_size, source_file_names, source_dir, target_dir) -> [n
 
 # train
 def train():
-    source_dir = r'C:\Users\pdcwi\Documents\IP6 nonsynced\pix2pix-poc-data\training\source'
-    target_dir = r'C:\Users\pdcwi\Documents\IP6 nonsynced\pix2pix-poc-data\training\target'
+    source_dir = r'../../../pix2pix-poc-data/training/source'
+    target_dir = r'../../../pix2pix-poc-data/training/target'
     sourcefiles = [f for f in os.listdir(source_dir) if os.path.isfile(os.path.join(source_dir, f))]
     now = datetime.datetime.now()
     sample_dir = "./samples/sample-%d-%d-%d--%02d%02d" % (
@@ -145,13 +145,12 @@ def train():
 
         start_time = time.time()
         for iteration in range(iteration_start, iterations):
-            # TODO hardcoded
             batch = get_image_batch(batch_size, sourcefiles,
                                     source_dir=source_dir,
                                     target_dir=target_dir)
             (batch_src, batch_target) = batch[0]
             batch_src = (batch_src / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
-            batch_target = (batch_target / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
+            batch_target = (batch_target - 0.5) * 2.0  # Transform into range -1, 1
 
             batch_src = np.array(batch_src).astype(np.float32)[None, :, :, :]
             batch_target = np.array(batch_target).astype(np.float32)[None, :, :, None]
@@ -181,7 +180,7 @@ def train():
             print("Epoch: [%2d] time: %4.4f, d_loss: %.8f, g_loss: %.8f" \
                   % (iteration, time.time() - start_time, errD_fake + errD_real, errG))
 
-            if iteration % 20 == 1:
+            if iteration % 50 == 1:
                 # gib nice picture output :)
                 sample_model(sourcefiles, iteration, sess, source_dir, target_dir, model, sample_dir,
                              use_random_image_as_sample)
@@ -211,7 +210,7 @@ def sample_model(filenames: [str], epoch: int, sess: tf.Session, source_dir: str
     original_source = batch_src.copy()
     original_target = batch_target.copy()
     batch_src = (batch_src / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
-    batch_target = (batch_target / 255.0 - 0.5) * 2.0  # Transform into range -1, 1
+    batch_target = (batch_target - 0.5) * 2.0  # Transform into range -1, 1
     batch_src = np.array(batch_src).astype(np.float32)[None, :, :, :]
     batch_target = np.array(batch_target).astype(np.float32)[None, :, :, None]
 
@@ -223,7 +222,7 @@ def sample_model(filenames: [str], epoch: int, sess: tf.Session, source_dir: str
 
     # convert images from [-1,1] to [0,255]
     # from shape [1,255,255,1] : tensor to shape [255,255] : nddarray
-    sample = (tf.squeeze(sample).eval() + 1) / 2 * 255
+    sample = (tf.squeeze(sample).eval() + 1.0) / 2.0 * 255
 
     save_ndarrays_asimage(os.path.join(sample_dir, 'sample_%d.png' % epoch), original_source, sample,
                           original_target * 255)
