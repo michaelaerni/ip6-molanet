@@ -7,64 +7,7 @@ import numpy as np
 import tensorflow as tf
 from PIL import Image
 
-from molanet.models.cgan_pix2pix import cgan_pix2pix_discriminator, cgan_pix2pix_generator, IMAGE_SIZE
-
-
-class Model(object):
-    def __init__(self, batch_size, image_size, src_color_dim, target_color_dim, l1_lambda=100):
-        self.batch_size = batch_size
-        self.image_size = image_size
-        self.src_color_dim = src_color_dim
-        self.target_color_dim = target_color_dim
-        self.L1_lambda = l1_lambda
-
-    def build_model(self, num_feature_maps):
-        self.real_data_source = tf.placeholder(tf.float32,
-                                               [self.batch_size, self.image_size, self.image_size,
-                                                self.src_color_dim],
-                                               name='source_images')
-        self.real_data_target = tf.placeholder(tf.float32,
-                                               [self.batch_size, self.image_size, self.image_size,
-                                                self.target_color_dim],
-                                               name='target_images')
-
-        self.real_A = self.real_data_source
-        self.real_B = self.real_data_target
-
-        self.fake_B = cgan_pix2pix_generator(self.real_A, batch_size=self.batch_size, g_filter_dim=num_feature_maps,
-                                             output_color_channels=1, output_size=self.image_size)
-
-        self.real_AB = tf.concat([self.real_A, self.real_B], 3)
-        self.fake_AB = tf.concat([self.real_A, self.fake_B], 3)
-        self.D, self.D_logits = cgan_pix2pix_discriminator(self.real_AB, batch_size=self.batch_size, reuse=False)
-        self.D_, self.D_logits_ = cgan_pix2pix_discriminator(self.fake_AB, batch_size=self.batch_size, reuse=True)
-
-        # self.fake_B_sample = self.sampler(self.real_A) #TODO what is dis
-
-        self.d_sum = tf.summary.histogram("d", self.D)
-        self.d__sum = tf.summary.histogram("d_", self.D_)
-        self.fake_B_sum = tf.summary.image("fake_B", self.fake_B)
-
-        self.d_loss_real = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_logits, labels=tf.ones_like(self.D)))
-        self.d_loss_fake = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_logits_, labels=tf.zeros_like(self.D_)))
-        self.g_loss = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_logits_, labels=tf.ones_like(self.D_))) \
-                      + self.L1_lambda * tf.reduce_mean(tf.abs(self.real_B - self.fake_B))
-
-        self.d_loss_real_sum = tf.summary.scalar("d_loss_real", self.d_loss_real)
-        self.d_loss_fake_sum = tf.summary.scalar("d_loss_fake", self.d_loss_fake)
-
-        self.d_loss = self.d_loss_real + self.d_loss_fake
-
-        self.g_loss_sum = tf.summary.scalar("g_loss", self.g_loss)
-        self.d_loss_sum = tf.summary.scalar("d_loss", self.d_loss)
-
-        t_vars = tf.trainable_variables()
-
-        self.d_vars = [var for var in t_vars if 'd_' in var.name]
-        self.g_vars = [var for var in t_vars if 'g_' in var.name]
+from molanet.models.cgan_pix2pix import IMAGE_SIZE, Pix2PixModel
 
 
 def load_image(name: str, source_dir, target_dir, size=IMAGE_SIZE):
@@ -102,7 +45,7 @@ def train():
     now = datetime.datetime.now()
     sample_dir = "./samples/sample-%d-%d-%d--%02d%02d" % (
         now.day, now.month, now.year, now.hour, now.minute)  # Generated samples
-    model_directory = "./models"  # Model
+    checkpoint_dir = "./checkpoints"  # Model
     if not os.path.exists('./samples'):
         os.mkdir('./samples')
     if not os.path.exists(sample_dir):
@@ -118,13 +61,15 @@ def train():
     is_grayscale = False
 
     with tf.Session() as sess:
-        model = Model(batch_size=batch_size, image_size=size, src_color_dim=3, target_color_dim=1)
-        model.build_model(num_feature_maps)
+        model = Pix2PixModel(batch_size=batch_size, image_size=size, src_color_channels=3, target_color_channels=1)
 
         saver = tf.train.Saver()
         if restore_iteration is not None and restore_iteration > 0:
             iteration_start = restore_iteration + 1
-            saver.restore(sess, "{model_directory}/model-{restore_iteration}.cptk")
+            checkpoint = tf.train.get_checkpoint_state(checkpoint_dir)
+            checkpoint_name = os.path.basename(checkpoint.model_checkpoint_path)
+            print('checkpoint_name=' + str(checkpoint_name))
+            saver.restore(sess, os.path.join(checkpoint_dir, checkpoint_name))
         else:
             iteration_start = 0
 
@@ -186,7 +131,7 @@ def train():
                              use_random_image_as_sample)
 
             if iteration % 500 == 2:
-                save(sess, saver, model_directory, iteration)
+                save(sess, saver, checkpoint_dir, iteration)
 
 
 def save(sess, saver, checkpoint_dir, step):
@@ -198,7 +143,7 @@ def save(sess, saver, checkpoint_dir, step):
     saver.save(sess, os.path.join(checkpoint_dir, model_name), global_step=step)
 
 
-def sample_model(filenames: [str], epoch: int, sess: tf.Session, source_dir: str, target_dir: str, model: Model,
+def sample_model(filenames: [str], epoch: int, sess: tf.Session, source_dir: str, target_dir: str, model: Pix2PixModel,
                  sample_dir: str, rng: bool):
     batch = None
     if rng:
