@@ -8,6 +8,7 @@ import molanet.operations as ops
 use_gpu = False
 IMAGE_SIZE = 32
 
+
 def cgan_pix2pix_generator(
         image: np.ndarray,
         output_size=256,
@@ -48,10 +49,10 @@ def cgan_pix2pix_generator(
     # decoder with skip connections
 
     # deconvolve e8 and add skip connections to e7
-    d1 = deconv2d_with_skipconn(bn_e8, bn_e7, batch_size, g_filter_dim * 8, 'g_d1', 'g_bn_d1')
-    d2 = deconv2d_with_skipconn(d1, bn_e6, batch_size, g_filter_dim * 8, 'g_d2', 'g_bn_d2')
+    d1 = deconv2d_with_skipconn(bn_e8, bn_e7, batch_size, g_filter_dim * 8, 'g_d1', 'g_bn_d1', True)
+    d2 = deconv2d_with_skipconn(d1, bn_e6, batch_size, g_filter_dim * 8, 'g_d2', 'g_bn_d2', True)
     # d3 is (8 x 8 x g_filter_dim*8*2)
-    d3 = deconv2d_with_skipconn(d2, bn_e5, batch_size, g_filter_dim * 4, 'g_d3', 'g_bn_d3')
+    d3 = deconv2d_with_skipconn(d2, bn_e5, batch_size, g_filter_dim * 4, 'g_d3', 'g_bn_d3', True)
     # d4 is (16 x 16 x g_filter_dim*4*2)
     d4 = deconv2d_with_skipconn(d3, e4, batch_size, g_filter_dim * 2, 'g_d4', 'g_bn_d4')
     # d5 is (32 x 32 x g_filter_dim*4*2)
@@ -75,10 +76,10 @@ def cgan_pix2pix_discriminator(
         d_filter_dim=64
 ):
     with tf.variable_scope("discriminator", reuse=reuse):
-        # c1 = leaky_relu(conv2d(image, d_filter_dim, name='d_c1'))  # 256 => 128
-        # c2 = leaky_relu(conv2d(c1, d_filter_dim * 2, name='d_c2'))  # 128 => 64
-        # c3 = leaky_relu(conv2d(c2, d_filter_dim * 4, name='d_c3'))  # 64 => 32
-        c4 = leaky_relu(conv2d(image, d_filter_dim, name='d_c4'))  # 32 => 16
+        c1 = leaky_relu(conv2d(image, d_filter_dim, name='d_c1'))  # 256 => 128
+        c2 = leaky_relu(conv2d(c1, d_filter_dim * 2, name='d_c2'))  # 128 => 64
+        c3 = leaky_relu(conv2d(c2, d_filter_dim * 4, name='d_c3'))  # 64 => 32
+        c4 = leaky_relu(conv2d(c3, d_filter_dim * 8, name='d_c4'))  # 32 => 16
 
         c4_reshaped = tf.reshape(c4, [batch_size, -1])
         bias = bias_variable('d_bias_linear', 1)
@@ -123,7 +124,7 @@ def deconv2d(input_, output_shape,
         return deconv
 
 
-def deconv2d_with_skipconn(features, skip_con, batch_size, num_filters, deconv_name, bn_name):
+def deconv2d_with_skipconn(features, skip_con, batch_size, num_filters, deconv_name, bn_name, with_dropout=False):
     assert features.shape[1] * 2 == skip_con.shape[1]
     assert features.shape[2] * 2 == skip_con.shape[2]
     assert skip_con.shape[1] == skip_con.shape[
@@ -133,7 +134,8 @@ def deconv2d_with_skipconn(features, skip_con, batch_size, num_filters, deconv_n
     d = deconv2d(tf.nn.relu(features), [batch_size, size_after_deconv, size_after_deconv, num_filters],
                  name=deconv_name)
     d = batch_norm(d, bn_name)
-    d = tf.nn.dropout(d, 0.5)
+    if with_dropout:
+        d = tf.nn.dropout(d, 0.5)
     d = tf.concat([d, skip_con], 3)  # skipconnection
     return d
 
