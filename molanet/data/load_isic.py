@@ -56,13 +56,17 @@ class IsicLoader(object):
         while len(current_batch) > 0:
             for current_segmentation in current_batch:
                 segmentation_id = current_segmentation["_id"]
-                mask = self.fetch_segmentation_matrix(segmentation_id)
-                yield Segmentation(
-                    segmentation_id,
-                    mask,
-                    parse_skill_level(current_segmentation["skill"]),
-                    (mask.shape[0], mask.shape[1])
-                )
+
+                if current_segmentation["failed"]:
+                    print(f"Failed segmentation {segmentation_id} for image {image_id}, skipped")
+                else:
+                    mask = self.fetch_segmentation_matrix(segmentation_id)
+                    yield Segmentation(
+                        segmentation_id,
+                        mask,
+                        parse_skill_level(current_segmentation["skill"]),
+                        (mask.shape[0], mask.shape[1])
+                    )
 
             # Load next batch, might be empty at the end
             batch_offset += len(current_batch)
