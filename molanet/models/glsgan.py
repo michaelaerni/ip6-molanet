@@ -107,16 +107,16 @@ class Pix2PixModel(object):
             e4 = conv2d(image, self.g_num_feature_maps, name='g_ee4_conv')
             # bn_e4 = batch_norm(e4, 'g_bn_e4')
             # 16x16 => 8x8
-            e5 = conv2d(tf.nn.relu(e4), self.g_num_feature_maps * 2, name='g_e5_conv')
+            e5 = conv2d(leaky_relu(e4), self.g_num_feature_maps * 2, name='g_e5_conv')
             bn_e5 = batch_norm(e5, 'g_bn_e5')
             # 8x8 => 4x4
-            e6 = conv2d(tf.nn.relu(bn_e5), self.g_num_feature_maps * 4, name='g_e6_conv')
+            e6 = conv2d(leaky_relu(bn_e5), self.g_num_feature_maps * 4, name='g_e6_conv')
             bn_e6 = batch_norm(e6, 'g_bn_e6')
             # 4x4 => 2x2
-            e7 = conv2d(tf.nn.relu(bn_e6), self.g_num_feature_maps * 8, name='g_e7_conv')
+            e7 = conv2d(leaky_relu(bn_e6), self.g_num_feature_maps * 8, name='g_e7_conv')
             bn_e7 = batch_norm(e7, 'g_bn_e7')
             # 2x2 => 1x1
-            e8 = conv2d(tf.nn.relu(bn_e7), self.g_num_feature_maps * 8, name='g_e8_conv')
+            e8 = conv2d(leaky_relu(bn_e7), self.g_num_feature_maps * 8, name='g_e8_conv')
             bn_e8 = batch_norm(e8, 'g_bn_e8')
 
         # decoder with skip connections
