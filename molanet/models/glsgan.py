@@ -22,7 +22,7 @@ class GlsGANModel(object):
         self.image_size = image_size
         self.src_color_dim = src_color_channels
         self.target_color_dim = target_color_channels
-        self.L1_lambda = l1_lambda
+        self.generator_L1_lambda = l1_lambda
         self.g_num_feature_maps = num_feature_maps
         self.d_num_feature_maps = num_feature_maps
         self.output_color_channels = target_color_channels
@@ -46,8 +46,6 @@ class GlsGANModel(object):
 
         self.fake_B = self.cgan_pix2pix_generator(self.real_A)
 
-
-
         self.real_AB = tf.concat([self.real_A, self.real_B], 3)
         self.fake_AB = tf.concat([self.real_A, self.fake_B], 3)
         self.D, self.D_logits = self.cgan_pix2pix_discriminator(self.real_AB, reuse=False)
@@ -65,7 +63,7 @@ class GlsGANModel(object):
             tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_logits_, labels=tf.zeros_like(self.D_)))
         self.g_loss = tf.reduce_mean(
             tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_logits_, labels=tf.ones_like(self.D_))) \
-                      + self.L1_lambda * tf.reduce_mean(tf.abs(self.real_B - self.fake_B))
+                      + self.generator_L1_lambda * tf.reduce_mean(tf.abs(self.real_B - self.fake_B))
 
         self.d_loss_real_sum = tf.summary.scalar("d_loss_real", self.d_loss_real)
         self.d_loss_fake_sum = tf.summary.scalar("d_loss_fake", self.d_loss_fake)
@@ -139,7 +137,7 @@ class GlsGANModel(object):
     def cgan_pix2pix_discriminator(
             self,
             image: np.ndarray,
-            reuse=False
+            reuse :bool=False
     ):
         with tf.variable_scope("discriminator", reuse=reuse):
             c1 = leaky_relu(conv2d(image, self.d_num_feature_maps, name='d_c1'))  # 256 => 128
