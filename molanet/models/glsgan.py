@@ -72,16 +72,6 @@ class GlsGANModel(object):
 
         self.d_loss = self.d_loss_real + self.d_loss_fake
 
-        #see glsgan paper and https://github.com/guojunq/glsgan/blob/master/glsgan.lua#L257
-        def l1diff(x,y):
-            dist = tf.reduce_sum(tf.abs(y-x))
-            return dist
-        pdist = self.L1_lambda * l1diff(self.real_B,self.fake_B) #TODO how to make this work with differently shaped tensors
-        self.cost1 = pdist + self.d_loss_real - self.d_loss_fake
-
-        self.glsloss = ops.leaky_relu(self.cost1,self.glsgan_alpha)
-        #self.d_error_hinge = tf.reduce_mean(self.glsloss)
-
         self.g_loss_sum = tf.summary.scalar("g_loss", self.g_loss)
         self.d_loss_sum = tf.summary.scalar("d_loss", self.d_loss)
 
