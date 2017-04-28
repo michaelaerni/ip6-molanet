@@ -9,7 +9,7 @@ use_gpu = False
 IMAGE_SIZE = 32
 
 
-class Pix2PixModel(object):
+class GlsGANModel(object):
     def __init__(self,
                  batch_size: int,
                  image_size: int,
@@ -46,10 +46,7 @@ class Pix2PixModel(object):
 
         self.fake_B = self.cgan_pix2pix_generator(self.real_A)
 
-        def l1diff(x,y):
-            dist = tf.reduce_sum(tf.abs(y-x))
-            return dist
-        pdist = self.L1_lambda * l1diff(self.real_B,self.fake_B) #TODO how to make this work with differently shaped tensors
+
 
         self.real_AB = tf.concat([self.real_A, self.real_B], 3)
         self.fake_AB = tf.concat([self.real_A, self.fake_B], 3)
@@ -75,11 +72,15 @@ class Pix2PixModel(object):
 
         self.d_loss = self.d_loss_real + self.d_loss_fake
 
-        #see glsgan paper
+        #see glsgan paper and https://github.com/guojunq/glsgan/blob/master/glsgan.lua#L257
+        def l1diff(x,y):
+            dist = tf.reduce_sum(tf.abs(y-x))
+            return dist
+        pdist = self.L1_lambda * l1diff(self.real_B,self.fake_B) #TODO how to make this work with differently shaped tensors
         self.cost1 = pdist + self.d_loss_real - self.d_loss_fake
 
         self.glsloss = ops.leaky_relu(self.cost1,self.glsgan_alpha)
-        self.d_error_hinge = tf.reduce_mean(self.glsloss)
+        #self.d_error_hinge = tf.reduce_mean(self.glsloss)
 
         self.g_loss_sum = tf.summary.scalar("g_loss", self.g_loss)
         self.d_loss_sum = tf.summary.scalar("d_loss", self.d_loss)
