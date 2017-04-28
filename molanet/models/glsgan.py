@@ -16,13 +16,13 @@ class GlsGANModel(object):
                  src_color_channels: int,
                  target_color_channels: int,
                  glsgan_slope_alpha : float = 0.0,
-                 l1_lambda: float = 100,
+                 g_l1_lambda: float = 100,
                  num_feature_maps: int = 64):
         self.batch_size = batch_size
         self.image_size = image_size
         self.src_color_dim = src_color_channels
         self.target_color_dim = target_color_channels
-        self.generator_L1_lambda = l1_lambda
+        self.g_l1_lambda = g_l1_lambda
         self.g_num_feature_maps = num_feature_maps
         self.d_num_feature_maps = num_feature_maps
         self.output_color_channels = target_color_channels
@@ -63,7 +63,7 @@ class GlsGANModel(object):
             tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_logits_, labels=tf.zeros_like(self.D_)))
         self.g_loss = tf.reduce_mean(
             tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_logits_, labels=tf.ones_like(self.D_))) \
-                      + self.generator_L1_lambda * tf.reduce_mean(tf.abs(self.real_B - self.fake_B))
+                      + self.g_l1_lambda * tf.reduce_mean(tf.abs(self.real_B - self.fake_B))
 
         self.d_loss_real_sum = tf.summary.scalar("d_loss_real", self.d_loss_real)
         self.d_loss_fake_sum = tf.summary.scalar("d_loss_fake", self.d_loss_fake)
