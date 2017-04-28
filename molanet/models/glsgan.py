@@ -108,31 +108,31 @@ class GlsGANModel(object):
             e8 = conv2d(leaky_relu(bn_e7), self.g_num_feature_maps * 8, name='g_e8_conv')
             bn_e8 = batch_norm(e8, 'g_bn_e8')
 
-        # decoder with skip connections
-        # deconvolve e8 and add skip connections to e7
-        d1 = deconv2d_with_skipconn(bn_e8, bn_e7, self.batch_size, self.g_num_feature_maps * 8, 'g_d1', 'g_bn_d1',
-                                    True)
-        d2 = deconv2d_with_skipconn(d1, bn_e6, self.batch_size, self.g_num_feature_maps * 8, 'g_d2', 'g_bn_d2',
-                                    True)
-        # d3 is (8 x 8 x g_num_feature_maps*8*2)
-        d3 = deconv2d_with_skipconn(d2, bn_e5, self.batch_size, self.g_num_feature_maps * 4, 'g_d3', 'g_bn_d3',
-                                    True)
-        # d4 is (16 x 16 x g_num_feature_maps*4*2)
-        d4 = deconv2d_with_skipconn(d3, e4, self.batch_size, self.g_num_feature_maps * 2, 'g_d4', 'g_bn_d4')
-        # d5 is (32 x 32 x self.g_num_feature_maps*4*2)
-        # d5 = deconv2d_with_skipconn(d4, s8, bn_e3, self.batch_size, g_num_feature_maps * 4, 'g_d5', 'g_bn_d5')
-        d5 = deconv2d(tf.nn.relu(d4),
-                      [self.batch_size, self.output_size, self.output_size, self.output_color_channels],
-                      name='g_d5')
-        ## d6 is 64 x 64 x self.g_num_feature_maps*2*2
-        # d6 = deconv2d_with_skipconn(d5, s4, bn_e2, self.batch_size, self.g_num_feature_maps * 2, 'g_d6', 'g_bn_d6')
-        ## d7 is 128 x 128 x g_num_feature_maps*2*2
-        # d7 = deconv2d_with#_skipconn(d6, s2, e1, self.batch_size, self.g_num_feature_maps, 'g_d7', 'g_bn_d7')
-        ## d8 is 256 x 256
-        # d8 = deconv2d(tf.nn.relu(d7), [self.batch_size, s, s, output_color_channels], name='g_d8')
+            # decoder with skip connections
+            # deconvolve e8 and add skip connections to e7
+            d1 = deconv2d_with_skipconn(bn_e8, bn_e7, self.batch_size, self.g_num_feature_maps * 8, 'g_d1', 'g_bn_d1',
+                                        True)
+            d2 = deconv2d_with_skipconn(d1, bn_e6, self.batch_size, self.g_num_feature_maps * 8, 'g_d2', 'g_bn_d2',
+                                        True)
+            # d3 is (8 x 8 x g_num_feature_maps*8*2)
+            d3 = deconv2d_with_skipconn(d2, bn_e5, self.batch_size, self.g_num_feature_maps * 4, 'g_d3', 'g_bn_d3',
+                                        True)
+            # d4 is (16 x 16 x g_num_feature_maps*4*2)
+            d4 = deconv2d_with_skipconn(d3, e4, self.batch_size, self.g_num_feature_maps * 2, 'g_d4', 'g_bn_d4')
+            # d5 is (32 x 32 x self.g_num_feature_maps*4*2)
+            # d5 = deconv2d_with_skipconn(d4, s8, bn_e3, self.batch_size, g_num_feature_maps * 4, 'g_d5', 'g_bn_d5')
+            d5 = deconv2d(tf.nn.relu(d4),
+                          [self.batch_size, self.output_size, self.output_size, self.output_color_channels],
+                          name='g_d5')
+            ## d6 is 64 x 64 x self.g_num_feature_maps*2*2
+            # d6 = deconv2d_with_skipconn(d5, s4, bn_e2, self.batch_size, self.g_num_feature_maps * 2, 'g_d6', 'g_bn_d6')
+            ## d7 is 128 x 128 x g_num_feature_maps*2*2
+            # d7 = deconv2d_with#_skipconn(d6, s2, e1, self.batch_size, self.g_num_feature_maps, 'g_d7', 'g_bn_d7')
+            ## d8 is 256 x 256
+            # d8 = deconv2d(tf.nn.relu(d7), [self.batch_size, s, s, output_color_channels], name='g_d8')
 
-        # return tf.nn.tanh(d8)
-        return tf.nn.tanh(d5)
+            # return tf.nn.tanh(d8)
+            return tf.nn.tanh(d5)
 
     def cgan_pix2pix_discriminator(
             self,
