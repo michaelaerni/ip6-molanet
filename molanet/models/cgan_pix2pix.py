@@ -56,15 +56,6 @@ class Pix2PixModel(object):
         self.d_sum = tf.summary.histogram("d_AB_real", self.D)
         self.d__sum = tf.summary.histogram("d_AB_fake", self.D_)
 
-        fake_B_rgb = tf.concat([self.fake_B,self.fake_B,self.fake_B],axis=3)
-        real_B_rgb = tf.concat([self.real_B,self.real_B,self.real_B],axis=3)
-
-        max_image_outputs = 5
-        fake_image = tf.concat([self.real_A, real_B_rgb, fake_B_rgb, tf.abs(real_B_rgb - fake_B_rgb)],axis=2)
-        self.image_sum = tf.summary.image(
-            name='sample',max_outputs=max_image_outputs,
-            tensor=fake_image)
-
         self.d_loss_real = tf.reduce_mean(
             tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_logits, labels=tf.ones_like(self.D)))
         self.d_loss_fake = tf.reduce_mean(

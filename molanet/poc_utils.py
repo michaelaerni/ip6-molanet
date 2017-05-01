@@ -4,10 +4,12 @@ import sys
 
 sys.path.append(os.path.abspath("../.."))
 
+import tensorflow as tf
 import numpy as np
 from PIL import Image
 
 from molanet.models.cgan_pix2pix import IMAGE_SIZE
+from molanet.models.cgan_pix2pix import Pix2PixModel
 
 
 def load_image(name: str, source_dir, target_dir, size=IMAGE_SIZE):
@@ -73,6 +75,17 @@ def save_ndarrays_asimage(filename: str, *arrays: np.ndarray):
     # arrays is just a big 3-dim matrix
     im = Image.fromarray(np.uint8(arrays))
     im.save(filename)
+
+
+def image_summary(model: Pix2PixModel, max_image_outputs: int = 3):
+    max_image_outputs = min(model.batch_size, max_image_outputs)
+    fake_B_rgb = tf.concat([model.fake_B, model.fake_B, model.fake_B], axis=3)
+    real_B_rgb = tf.concat([model.real_B, model.real_B, model.real_B], axis=3)
+    fake_image = tf.concat([model.real_A, real_B_rgb, fake_B_rgb, tf.abs(real_B_rgb - fake_B_rgb)], axis=2)
+    return tf.summary.image(
+        name='sample',
+        max_outputs=max_image_outputs,
+        tensor=fake_image)
 
 
 def save(sess, saver, checkpoint_dir, step):
