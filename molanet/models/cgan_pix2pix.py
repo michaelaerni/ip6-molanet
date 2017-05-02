@@ -5,29 +5,25 @@ import tensorflow as tf
 
 import molanet.operations as ops
 
-use_gpu = False
 IMAGE_SIZE = 32
 
 
 class Pix2PixModel(object):
     def __init__(self,
                  batch_size: int,
-                 image_size: int,
                  src_color_channels: int,
                  target_color_channels: int,
-                 glsgan_slope_alpha: float = 0.0,
                  g_l1_lambda: float = 100,
                  num_feature_maps: int = 64):
         self.batch_size = batch_size
-        self.image_size = image_size
         self.src_color_dim = src_color_channels
         self.target_color_dim = target_color_channels
         self.g_l1_lambda = g_l1_lambda
         self.g_num_feature_maps = num_feature_maps
         self.d_num_feature_maps = num_feature_maps
         self.output_color_channels = target_color_channels
-        self.output_size = image_size
-        self.glsgan_alpha = glsgan_slope_alpha
+        self.image_size = IMAGE_SIZE
+        self.output_size = IMAGE_SIZE
 
         self.build_model()
 
@@ -50,8 +46,6 @@ class Pix2PixModel(object):
         self.fake_AB = tf.concat([self.real_A, self.fake_B], 3)
         self.D, self.D_logits = self.cgan_pix2pix_discriminator(self.real_AB, reuse=False)
         self.D_, self.D_logits_ = self.cgan_pix2pix_discriminator(self.fake_AB, reuse=True)
-
-        # self.fake_B_sample = self.sampler(self.real_A) #TODO what is dis
 
         self.d_sum = tf.summary.histogram("d_AB_real", self.D)
         self.d__sum = tf.summary.histogram("d_AB_fake", self.D_)
