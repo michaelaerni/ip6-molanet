@@ -2,6 +2,7 @@ import argparse
 import os
 import png
 import shutil
+import json
 
 from molanet.data.database import DatabaseConnection
 
@@ -63,9 +64,14 @@ if __name__ == "__main__":
                     png.Writer(segmentation.dimensions[1], segmentation.dimensions[0], greyscale=True) \
                         .write(f, segmentation.mask.reshape([segmentation.dimensions[0], -1]) * 255)
 
-            # TODO: Write metadata
-
-
+            # Write metadata
+            sample_meta = DatabaseConnection.sample_to_dict(sample, include_image=False)
+            segmentation_meta = [
+                DatabaseConnection.segmentation_to_dict(sample.uuid, segmentation, include_image=False)
+                for segmentation in sample.segmentations]
+            sample_meta["segmentations"] = segmentation_meta
+            with open(f"{meta_directory}/{sample.uuid}.json", "w+") as f:
+                json.dump(sample_meta, f)
 
             dump_count += 1
             print(f"[{dump_count}]: Dumped sample {sample.uuid} with {len(sample.segmentations)} segmentations")
