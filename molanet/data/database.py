@@ -1,7 +1,8 @@
 import psycopg2
-from typing import Dict
+import numpy as np
+from typing import Dict, Iterable
 
-from molanet.data.entities import MoleSample, Segmentation
+from molanet.data.entities import *
 
 
 class DatabaseConnection(object):
@@ -46,6 +47,55 @@ class DatabaseConnection(object):
             cur.execute(query, {"data_source": data_source})
             self._connection.commit()
             return cur.rowcount  # Number of deleted rows
+
+    def get_samples(self, offset=0, batch_size=20) -> Iterable[MoleSample]:
+        if offset < 0:
+            raise ValueError("offset must be >= 0")
+
+        sample_query = """SELECT uuid, data_source, data_set, source_id, name, height, width, diagnosis, use_case, image
+        FROM mole_samples LIMIT %(batch_size)s OFFSET %(offset_count)s"""
+
+        with self._connection.cursor() as cur:
+            while True:
+                cur.execute(sample_query, {"offset_count": offset, "batch_size": batch_size})
+
+                if cur.rowcount <= 0:
+                    break
+
+                for sample_record in cur:
+                    uuid = sample_record[0]
+                    segmentations = list(self.get_segmentations_for_sample(uuid))
+                    dimensions = (int(sample_record[5]), int(sample_record[6]))
+                    yield MoleSample(
+                        uuid,
+                        data_source=sample_record[1],
+                        data_set=sample_record[2],
+                        source_id=sample_record[3],
+                        name=sample_record[4],
+                        dimensions=dimensions,
+                        diagnosis=Diagnosis[sample_record[7]],
+                        use_case=UseCase[sample_record[8]],
+                        image=np.frombuffer(sample_record[9], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 3]),
+                        segmentations=segmentations
+                    )
+
+    def get_segmentations_for_sample(self, sample_uuid: str) -> Iterable[Segmentation]:
+        query = """SELECT source_id, height, width, skill_level, use_case, mask
+        FROM segmentations
+        WHERE mole_sample_uuid = %(sample_uuid)s"""
+
+        with self._connection.cursor() as cur:
+            cur.execute(query, {"sample_uuid": sample_uuid})
+
+            for segmentation_record in cur:
+                dimensions = (int(segmentation_record[1]), int(segmentation_record[2]))
+                yield Segmentation(
+                    source_id=segmentation_record[0],
+                    dimensions=dimensions,
+                    skill_level=SkillLevel[segmentation_record[3]],
+                    use_case=segmentation_record[4],
+                    mask=np.frombuffer(segmentation_record[5], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 1])
+                )
 
     @staticmethod
     def _sample_to_dict(sample: MoleSample) -> Dict:
