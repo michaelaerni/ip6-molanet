@@ -31,11 +31,11 @@ class DatabaseConnection(object):
 
         with self._connection.cursor() as cur:
             # Insert sample
-            cur.execute(sample_query, self._sample_to_dict(sample))
+            cur.execute(sample_query, self.sample_to_dict(sample))
 
             # Insert segmentations
             for segmentation in sample.segmentations:
-                cur.execute(segmentation_query, self._segmentation_to_dict(sample.uuid, segmentation))
+                cur.execute(segmentation_query, self.segmentation_to_dict(sample.uuid, segmentation))
 
         self._connection.commit()
 
@@ -61,6 +61,8 @@ class DatabaseConnection(object):
 
                 if cur.rowcount <= 0:
                     break
+
+                offset += cur.rowcount
 
                 for sample_record in cur:
                     uuid = sample_record[0]
@@ -93,13 +95,13 @@ class DatabaseConnection(object):
                     source_id=segmentation_record[0],
                     dimensions=dimensions,
                     skill_level=SkillLevel[segmentation_record[3]],
-                    use_case=segmentation_record[4],
+                    use_case=UseCase[segmentation_record[4]],
                     mask=np.frombuffer(segmentation_record[5], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 1])
                 )
 
     @staticmethod
-    def _sample_to_dict(sample: MoleSample) -> Dict:
-        return {
+    def sample_to_dict(sample: MoleSample, include_image: bool = True) -> Dict:
+        result = {
             "uuid": sample.uuid,
             "data_source": sample.data_source,
             "data_set": sample.data_set,
@@ -108,18 +110,26 @@ class DatabaseConnection(object):
             "height": sample.dimensions[0],
             "width": sample.dimensions[1],
             "diagnosis": sample.diagnosis.name,
-            "use_case": sample.use_case.name,
-            "image": sample.image.tobytes(order="C")
+            "use_case": sample.use_case.name
         }
 
+        if include_image:
+            result["image"] = sample.image.tobytes(order="C")
+
+        return result
+
     @staticmethod
-    def _segmentation_to_dict(sample_uuid, segmentation: Segmentation) -> Dict:
-        return {
+    def segmentation_to_dict(sample_uuid, segmentation: Segmentation, include_image: bool = True) -> Dict:
+        result = {
             "mole_sample_uuid": sample_uuid,
             "source_id": segmentation.source_id,
             "height": segmentation.dimensions[0],
             "width": segmentation.dimensions[1],
             "skill_level": segmentation.skill_level.name,
-            "use_case": segmentation.use_case.name,
-            "mask": segmentation.mask.tobytes(order="C")
+            "use_case": segmentation.use_case.name
         }
+
+        if include_image:
+            result["mask"] = segmentation.mask.tobytes(order="C")
+
+        return result
