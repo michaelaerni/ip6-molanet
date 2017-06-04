@@ -216,9 +216,9 @@ if __name__ == "__main__":
 
     disc_fake_net, disc_fake_logits = MolanetPoc._create_discriminator(image_patches, gen_net, reuse=True)
 
-    loss_gen = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=disc_fake_logits, labels=tf.ones_like(disc_fake_logits)))
-    loss_disc_real = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=disc_real_logits, labels=tf.ones_like(disc_real_logits)))
-    loss_disc_fake = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=disc_fake_logits, labels=tf.zeros_like(disc_fake_logits)))
+    loss_gen = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake_logits, labels=tf.ones_like(disc_fake_logits)))
+    loss_disc_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_real_logits, labels=tf.ones_like(disc_real_logits)))
+    loss_disc_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake_logits, labels=tf.zeros_like(disc_fake_logits)))
     loss_disc = loss_disc_real + loss_disc_fake
 
     # Optimizers
@@ -247,9 +247,6 @@ if __name__ == "__main__":
         Image.fromarray(np.reshape((patches_segmentation[20] + 1.0) / 2.0 * 255.0, (patches_segmentation.shape[1], patches_segmentation.shape[2])).astype(np.uint8)).save("/tmp/patches_segmentation.png")
         Image.fromarray(np.reshape((patches_gen_image[20] + 1.0) / 2.0 * 255.0, (patches_gen_image.shape[1], patches_gen_image.shape[2], 3)).astype(np.uint8)).save("/tmp/patches_gen_image.png")
 
-        print(patches_image.shape, patches_segmentation.shape, patches_gen_image.shape)
-        print(patches_image.dtype, patches_segmentation.dtype, patches_gen_image.dtype)
-
         print("Starting training...")
         for epoch in range(3000):
             _, cost_disc = sess.run([update_disc, loss_disc], feed_dict={image_patches: patches_image, image: patches_gen_image, mask_patches: patches_segmentation})
@@ -258,8 +255,21 @@ if __name__ == "__main__":
             if epoch % 1 == 0:
                 print(f"{epoch} losses: gen={cost_gen:.8f}, disc={cost_disc:.8f}")
 
-            if epoch % 1 == 0:
-                sample = sess.run(gen_net_use, feed_dict={image: patches_gen_image})
+            # if epoch % 1 == 0:
+            #     sample = sess.run(gen_net_use, feed_dict={image: patches_gen_image})
+            #
+            #     Image.fromarray(np.reshape((sample + 1.0) / 2.0 * 255.0, (sample.shape[1], sample.shape[2])).astype(np.uint8)).save(f"/tmp/res_{epoch}.png")
+            #     print("Saved image")
 
-                Image.fromarray(np.reshape((sample + 1.0) / 2.0 * 255.0, (sample.shape[1], sample.shape[2])).astype(np.uint8)).save(f"/tmp/res_{epoch}.png")
-                print("Saved image")
+            if epoch % 10 == 0:
+                sample = sess.run(gen_net, feed_dict={image: patches_gen_image})
+                result = np.zeros([11 * 70, 15 * 70])
+                for y in range(result.shape[0] // 70):
+                    for x in range(result.shape[1] // 70):
+                        y_offset = y * 70
+                        x_offset = x * 70
+
+                        result[y_offset:y_offset+70, x_offset:x_offset+70] = sample[y * 15 + x, :, :, 0]
+
+                Image.fromarray(((result + 1.0) / 2.0 * 255.0).astype(np.uint8)).save(f"/tmp/res_full_{epoch}.png")
+                print("Saved big image")
