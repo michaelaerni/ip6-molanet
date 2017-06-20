@@ -93,7 +93,7 @@ class Pix2PixFactory(NetworkFactory):
                 target_layer_size = 2 ** (idx + 1)
                 do_activation = encoder_index > 0
                 feature_count = min(max_feature_count, min_feature_count * (2 ** encoder_index))\
-                    if encoder_index >= 0 else 3
+                    if encoder_index >= 0 else 1
                 input_tensor, _, _ = conv2d_transpose(input_tensor, feature_count,
                                                     target_layer_size,
                                                     f"dec_{idx}", keep_probability, batch_size,
