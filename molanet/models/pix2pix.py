@@ -61,16 +61,16 @@ class Pix2PixFactory(NetworkFactory):
 
         self._spatial_extent = spatial_extent
 
-    def create_generator(self, source_tensor: tf.Tensor, reuse: bool = False, apply_summary: bool = True) -> tf.Tensor:
+    def create_generator(self, x: tf.Tensor, reuse: bool = False, apply_summary: bool = True) -> tf.Tensor:
         with tf.variable_scope("generator", reuse=reuse):
-            input_tensor = source_tensor
+            input_tensor = x
             encoder_activations = []
             layer_index = 0
             min_feature_count = 32
             feature_count = min_feature_count
             max_feature_count = 512
             layer_size = self._spatial_extent
-            batch_size = tf.shape(source_tensor)[0]
+            batch_size = tf.shape(x)[0]
 
             # Encoder
             while layer_size > 1:
@@ -105,12 +105,12 @@ class Pix2PixFactory(NetworkFactory):
 
     def create_discriminator(
             self,
-            source_tensor: tf.Tensor,
-            target_tensor: tf.Tensor,
+            x: tf.Tensor,
+            y: tf.Tensor,
             reuse: bool = False,
             apply_summary: bool = True) -> tf.Tensor:
         with tf.variable_scope("discriminator", reuse=reuse):
-            input_tensor = tf.concat((source_tensor, target_tensor), axis=3)
+            input_tensor = tf.concat((x, y), axis=3)
             layer_size = self._spatial_extent
             feature_count = 32
             max_feature_count = 512
