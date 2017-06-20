@@ -12,14 +12,14 @@ class NetworkFactory(object):
 
     def create_generator(
             self,
-            input_tensor: tf.Tensor,
+            source_tensor: tf.Tensor,
             reuse: bool = False,
             apply_summary: bool = True
     ) -> tf.Tensor:
         """
         Creates a generator network and optionally applies summary options where useful.
 
-        :param input_tensor: Input of the created generator
+        :param source_tensor: Input for the created generator
         :param reuse: If False, the weights cannot exist yet, if True they will be reused. Defaults to False.
         :param apply_summary: If True, summary operations will be added to the network. Defaults to True.
         :return: Output tensor of the created generator
@@ -29,17 +29,19 @@ class NetworkFactory(object):
 
     def create_discriminator(
             self,
-            input_tensor: tf.Tensor,
+            source_tensor: tf.Tensor,
+            target_tensor: tf.Tensor,
             reuse: bool = False,
             apply_summary: bool = True
     ) -> tf.Tensor:
         """
         Creates a discriminator network and optionally applies summary options where useful.
 
-        :param input_tensor: Input of the created discriminator
+        :param source_tensor: Input tensor for the corresponding generator
+        :param target_tensor: Tensor of the generated value for the input source_tensor
         :param reuse: If False, the weights cannot exist yet, if True they will be reused. Defaults to False.
         :param apply_summary: If True, summary operations will be added to the network. Defaults to True.
-        :return: Output tensor of the created discriminator
+        :return: Output tensor of the created discriminator as unscaled logits
         """
 
         raise NotImplementedError("This method should be overridden by child classes")
