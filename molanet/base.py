@@ -133,13 +133,13 @@ class NetworkTrainer(object):
     def train(self, sess: tf.Session, summary_directory: str):
         # TODO: Remove prints everywhere
 
-        # Start input enqueue threads.
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
         # TODO: Better summary handling
         summary = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(summary_directory, sess.graph)
+
+        # Start input enqueue threads.
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
         try:
             while not coord.should_stop():
