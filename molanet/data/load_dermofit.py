@@ -68,7 +68,7 @@ class DermofitLoader(object):
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser("Load ISIC images and segmentations into a database")
+    parser = argparse.ArgumentParser("Load Dermofit images and segmentations into a database")
 
     parser.add_argument("--database-host", type=str, default="localhost", help="Target database host")
     parser.add_argument("--database", type=str, default="molanet", help="Target database name")
@@ -80,7 +80,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
                         help="Name of the data source stored in the database")
     parser.add_argument("--lesionlist", type=str, default="lesionlist.txt",
                         help="name of the file with the lesiondescriptions")
-    parser.add_argument("--lesiondir", type=str, default=r"C:\Users\pdcwi\Documents\IP6 nonsynced\dermofit",
+    parser.add_argument("--lesiondir", type=str, default=None,
                         help=" Path to the folder containing the lesion folders and lesionlist ")
     parser.add_argument("--offset", type=int, default=0, help="Starting offset in data set")
 
