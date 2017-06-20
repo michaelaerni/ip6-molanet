@@ -3,7 +3,7 @@ import tensorflow as tf
 
 class NetworkFactory(object):
     """
-    Creates generator and discriminator networks to be used in the SegmentationNetwork.
+    Factory for generator and discriminator networks.
 
     This is an abstract base class.
     Child classes should inherit override the network creation methods.
@@ -43,7 +43,3 @@ class NetworkFactory(object):
         """
 
         raise NotImplementedError("This method should be overridden by child classes")
-
-
-class SegmentationNetwork(object):
-    pass
