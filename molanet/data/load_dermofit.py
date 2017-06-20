@@ -68,7 +68,7 @@ class DermofitLoader(object):
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser("Load ISIC images and segmentations into a database")
+    parser = argparse.ArgumentParser("Load Dermofit images and segmentations into a database")
 
     parser.add_argument("--database-host", type=str, default="localhost", help="Target database host")
     parser.add_argument("--database", type=str, default="molanet", help="Target database name")
