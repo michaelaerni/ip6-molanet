@@ -1,10 +1,11 @@
 import argparse
 import io
+import uuid
+from typing import Iterable
 
 import numpy as np
 import requests
 from PIL import Image
-from typing import Iterable
 
 from molanet.data.database import DatabaseConnection
 from molanet.data.entities import MoleSample, Diagnosis, Segmentation, SkillLevel
@@ -72,8 +73,8 @@ class IsicLoader(object):
             batch_offset += len(current_batch)
             current_batch = self.fetch_segmentation_ids(image_id, batch_offset)
 
-    def create_uuid(self, image_id):
-        return f"{self._data_source}_{image_id}"
+    def create_uuid(self):
+        return str(uuid.uuid4())
 
     def load_samples(self, offset=0) -> Iterable[MoleSample]:
         batch_offset = offset

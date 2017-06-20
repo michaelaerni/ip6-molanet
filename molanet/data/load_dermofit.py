@@ -1,4 +1,5 @@
 import argparse
+import uuid
 from os import path
 from typing import Iterable
 
@@ -14,8 +15,8 @@ class DermofitLoader(object):
         self.lesionlist = lesionlist
         self.lesiondir = lesiondir
 
-    def create_uuid(self, source_id: str) -> str:
-        return source_id
+    def create_uuid(self) -> str:
+        return str(uuid.uuid4())
 
     def parse_diagnosis(self, lesion: str) -> Diagnosis:
         return {
