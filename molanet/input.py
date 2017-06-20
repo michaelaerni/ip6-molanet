@@ -5,9 +5,12 @@ import tensorflow as tf
 import io
 
 
-def _read_record(input_producer, size):
+def _read_record(
+        input_producer,
+        size,
+        compression_type):
 
-    reader = tf.TFRecordReader()
+    reader = tf.TFRecordReader(options=tf.python_io.TFRecordOptions(compression_type))
     _, serialized_example = reader.read(input_producer, name="read_record")
 
     raw_features = tf.parse_single_example(serialized_example, features={
@@ -28,6 +31,7 @@ def create_fixed_input_pipeline(
         epochs: int,
         image_size: int,
         seed: int = None,
+        compression_type: tf.python_io.TFRecordCompressionType = tf.python_io.TFRecordCompressionType.ZLIB,
         min_after_dequeue: int = 100,
         thread_count: int = 1) -> Tuple[tf.Tensor, tf.Tensor]:
 
@@ -45,7 +49,7 @@ def create_fixed_input_pipeline(
         input_producer = tf.train.string_input_producer(uuids, epochs, seed=seed)
 
         # Add record reading operation
-        image, segmentation = _read_record(input_producer, image_size)
+        image, segmentation = _read_record(input_producer, image_size, compression_type)
 
         # Calculate using safety margin
         capacity = min_after_dequeue + (thread_count + 1) * batch_size
