@@ -1,5 +1,5 @@
 import tensorflow as tf
-from molanet.base import NetworkFactory
+from molanet.base import NetworkFactory, ObjectiveFactory
 from molanet.operations import leaky_relu
 
 
@@ -124,3 +124,49 @@ class Pix2PixFactory(NetworkFactory):
                 layer_index += 1
 
             return input_tensor
+
+
+class Pix2PixLossFactory(ObjectiveFactory):
+
+    def __init__(self, l1_lambda: float):
+        self._l1_lambda = tf.constant(l1_lambda, dtype=tf.float32)
+
+    def create_discriminator_loss(self, x: tf.Tensor, y: tf.Tensor, generator_discriminator: tf.Tensor,
+                                  real_discriminator: tf.Tensor, apply_summary: bool = True) -> tf.Tensor:
+        loss_real = tf.reduce_mean(
+            tf.nn.sigmoid_cross_entropy_with_logits(
+                logits=real_discriminator,
+                labels=tf.ones_like(generator_discriminator))
+        )
+        loss_generated = tf.reduce_mean(
+            tf.nn.sigmoid_cross_entropy_with_logits(
+                logits=generator_discriminator,
+                labels=tf.zeros_like(generator_discriminator))
+        )
+
+        loss = loss_real + loss_generated
+
+        if apply_summary:
+            tf.summary.scalar("discriminator_loss", loss)
+            tf.summary.scalar("discriminator_loss_real", loss_real)
+            tf.summary.scalar("discriminator_loss_generated", loss_generated)
+
+        return loss
+
+    def create_generator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
+                              generator_discriminator: tf.Tensor, apply_summary: bool = True) -> tf.Tensor:
+        loss_discriminator = tf.reduce_mean(
+            tf.nn.sigmoid_cross_entropy_with_logits(
+                logits=generator_discriminator,
+                labels=tf.ones_like(generator_discriminator))
+        )
+        l1_loss = tf.reduce_mean(tf.abs(tf.subtract(y, generator)))
+
+        loss = loss_discriminator + self._l1_lambda * l1_loss
+
+        if apply_summary:
+            tf.summary.scalar("generator_loss", loss)
+            tf.summary.scalar("discriminator_loss_discriminator", loss_discriminator)
+            tf.summary.scalar("discriminator_loss_l1_unscaled", l1_loss)
+
+        return loss
