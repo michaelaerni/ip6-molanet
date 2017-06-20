@@ -13,7 +13,7 @@ if __name__ == "__main__":
     os.makedirs(SUMMARY_DIR)
 
     tf.reset_default_graph()
-    input_x, input_y = create_fixed_input_pipeline("/home/michael/temp/molanet/", "/home/michael/temp/molanet.csv", 4, 10, 512, thread_count=4)
+    input_x, input_y = create_fixed_input_pipeline("/home/michael/temp/molanet/", "/home/michael/temp/molanet.csv", 5, 1, 512, thread_count=4)
     print("Input pipeline created")
     trainer = NetworkTrainer(input_x, input_y, Pix2PixFactory(512), Pix2PixLossFactory(0.001), 0.001)
     print("Trainer created")
