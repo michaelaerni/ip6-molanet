@@ -5,7 +5,8 @@ from typing import Iterable
 import numpy as np
 from PIL import Image
 
-from molanet.data.entities import MoleSample, Diagnosis
+from molanet.data.database import DatabaseConnection
+from molanet.data.entities import MoleSample, Diagnosis, Segmentation, SkillLevel
 
 
 class DermofitLoader(object):
@@ -42,16 +43,19 @@ class DermofitLoader(object):
         assert image.shape[0] == mask.shape[0]
         assert image.shape[1] == mask.shape[1]
 
+        # dermofit has exactly one mask per image
+        segmentation = Segmentation(f"{source_id}mask", mask, SkillLevel.UNKNOWN, (mask.shape[0], mask.shape[1]))
+
         sample = MoleSample(
             uuid=self.create_uuid(source_id),
-            data_source="molanet",
+            data_source="dermofit",
             data_set=lesion,
             source_id=source_id,
             name=f"dermofit_{number}",
-            diagnosis=self.parse_diagnosis(lesion),
+            diagnosis=self.parse_diagnosis(lesion.lower()),
             dimensions=(image.shape[0], image.shape[1]),
             image=image,
-            segmentations=[mask]
+            segmentations=[segmentation]
         )
         return sample
 
@@ -87,14 +91,21 @@ if __name__ == "__main__":
     parser = create_arg_parser()
     args = parser.parse_args()
 
-    data_source = args.data_source_name
     lesionlist = path.join(args.lesiondir, args.lesionlist)
     loader = DermofitLoader(lesionlist, args.lesiondir)
 
-    sample_count = args.offset
-    for sample in loader.load_samples(offset=args.offset):
-        sample_count += 1
+    with DatabaseConnection(args.database_host, args.database, username=args.database_username,
+                            password=args.database_password) as db:
+        if args.offset == 0:
+            removed_count = db.clear_data(data_source="dermofit")
+            print(f"Cleared data set, deleted {removed_count} rows")
+        else:
+            print(f"Starting at offset {args.offset}, existing data will not be cleared")
 
-        # db.insert(sample)
+        sample_count = args.offset
+        for sample in loader.load_samples(offset=args.offset):
+            sample_count += 1
 
-        print(f"[{sample_count}]: Saved sample {sample.uuid} from data set {sample.data_set}")
+            db.insert(sample)
+
+            print(f"[{sample_count}]: Saved sample {sample.uuid} from data set {sample.data_set}")
