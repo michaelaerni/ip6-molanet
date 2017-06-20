@@ -38,12 +38,20 @@ class RecordSaver(object):
         image = actual_image.resize((size, size), Image.NEAREST)
         return image
 
-    def _image_feature(self, image: np.ndarray):
-        bytes = np.array(image, dtype=np.float32).tobytes()
-        return tf.train.Feature(bytes_list=tf.train.BytesList(value=[bytes]))
+    def _float_list(self, array: np.ndarray):
+        return tf.train.Feature(float_list=tf.train.FloatList(value=array.reshape([-1])))
 
-    def _int64_feature(self, value):
-        return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+    def _image_feature(self, image: Image):
+        # Normalize into tanh range
+        image_array = np.asarray(image, dtype=np.float32)
+        image_array = (image_array / 255.0 - 0.5) * 2.0
+        return self._float_list(image_array)
+
+    def _segmentation_feature(self, segmentation: Image):
+        # Normalize into tanh range
+        segmentation_array = np.asarray(segmentation, dtype=np.float32)
+        segmentation_array = (segmentation_array - 0.5) * 2.0  # Already in range [0, 1]
+        return self._float_list(segmentation_array)
 
     def writeSample(self, sample: MoleSample):
         file = self.get_or_make_filename(sample)
@@ -52,7 +60,7 @@ class RecordSaver(object):
         segmentation = self._resize_segmentation(sample.segmentations[0].mask, 512)
         example = tf.train.Example(features=tf.train.Features(feature={
             'image': self._image_feature(image),
-            'segmentation': self._image_feature(segmentation)}))
+            'segmentation': self._segmentation_feature(segmentation)}))
 
         with TFRecordWriter(file, self.options) as writer:
             writer.write(example.SerializeToString())
