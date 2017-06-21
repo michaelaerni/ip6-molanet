@@ -1,5 +1,6 @@
 import argparse
 import os
+from enum import Enum
 from os import path
 
 import numpy as np
@@ -11,12 +12,17 @@ from molanet.data.database import DatabaseConnection
 from molanet.data.entities import MoleSample, UseCase
 
 
+class Resize(Enum):
+    SCALE = 0
+    PADDED = 1
+
 class RecordSaver(object):
     def __init__(self, rootdir: str, compressiontype: TFRecordCompressionType = TFRecordCompressionType.ZLIB,
-                 log_saved_uuids=True):
+                 log_saved_uuids=True, resize: Resize = Resize.SCALE):
         self.rootdir = rootdir
         self.options = TFRecordOptions(compressiontype)
         self.log_saved_uuids = log_saved_uuids
+        self.resize = resize
 
         for logfile in [self.get_logfile(UseCase.__getattr__(name)) for name in UseCase._member_names_]:
             try:
@@ -35,16 +41,31 @@ class RecordSaver(object):
         return self.get_filename(sample)
 
     def _resize_image(self, image: np.ndarray, size: int):
-        # TODO aspect ratio
-        actual_image = Image.fromarray(image)
-        image = actual_image.resize((size, size), Image.BICUBIC)
-        return image
+        image = Image.fromarray(image)
+        if self.resize == Resize.SCALE:
+            return image.resize((size, size), Image.BICUBIC)
+        elif self.resize == Resize.PADDED:
+            image.thumbnail((size, size))
+            padding = Image.new('RGB',
+                                (size, size),
+                                (0, 0, 0))  # Black
+            padding.paste(image, ((padding.size[0] - image.size[0]) // 2, (padding.size[1] - image.size[1]) // 2))
+            return padding
+        else:
+            raise ValueError()
 
     def _resize_segmentation(self, segmentation: np.ndarray, size: int):
-        # TODO aspect ratio
-        actual_image = Image.fromarray(np.squeeze(segmentation))
-        image = actual_image.resize((size, size), Image.NEAREST)
-        return image
+        image = Image.fromarray(np.squeeze(segmentation))
+        if self.resize == Resize.SCALE:
+            return image.resize((size, size), Image.BICUBIC)
+        elif self.resize == Resize.PADDED:
+            image.thumbnail((size, size))
+            padding = image.resize((512, 512))
+            padding.paste(0, (0, 0, 512, 512))  # fill black
+            padding.paste(image, ((padding.size[0] - image.size[0]) // 2, (padding.size[1] - image.size[1]) // 2))
+            return padding
+        else:
+            raise ValueError()
 
     def _float_list(self, array: np.ndarray):
         return tf.train.Feature(float_list=tf.train.FloatList(value=array.reshape([-1])))
@@ -99,6 +120,8 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--basedir", type=str, default=None, help="directory to dump records into")
     parser.add_argument("--batch-size", type=int, default=20,
                         help="how many records to dump. -1 for all starting at offset")
+    parser.add_argument("--resize", type=int, default=0,
+                        help="0: keep aspect ratio and pad with 0's. 1: resize by scaling (ignore aspect ratio)")
 
     return parser
 
@@ -107,11 +130,11 @@ if __name__ == "__main__":
     # Parse arguments
     parser = create_arg_parser()
     args = parser.parse_args()
-    saver = RecordSaver(args.basedir)
+    resize = Resize.PADDED if args.resize == 0 else Resize.SCALE
+    saver = RecordSaver(args.basedir, resize=resize)
 
     with DatabaseConnection(args.database_host, args.database, username=args.database_username,
                             password=args.database_password) as db:
-
         sample_count = args.offset
         for sample in db.get_samples(args.offset, args.batch_size):
             if saver.writeSample(sample):
