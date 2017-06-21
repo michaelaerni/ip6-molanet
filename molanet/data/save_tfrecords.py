@@ -43,9 +43,9 @@ class RecordSaver(object):
     def _resize_image(self, image: np.ndarray, size: int):
         image = Image.fromarray(image)
         if self.resize == Resize.SCALE:
-            return image.resize((size, size), Image.BICUBIC)
+            return image.resize((size, size), Image.ANTIALIAS)
         elif self.resize == Resize.PADDED:
-            image.thumbnail((size, size))
+            image.thumbnail((size, size), Image.ANTIALIAS)
             padding = Image.new('RGB',
                                 (size, size),
                                 (0, 0, 0))  # Black
@@ -57,9 +57,9 @@ class RecordSaver(object):
     def _resize_segmentation(self, segmentation: np.ndarray, size: int):
         image = Image.fromarray(np.squeeze(segmentation))
         if self.resize == Resize.SCALE:
-            return image.resize((size, size), Image.BICUBIC)
+            return image.resize((size, size), Image.NEAREST)
         elif self.resize == Resize.PADDED:
-            image.thumbnail((size, size))
+            image.thumbnail((size, size), Image.NEAREST)
             padding = image.resize((512, 512))
             padding.paste(0, (0, 0, 512, 512))  # fill black
             padding.paste(image, ((padding.size[0] - image.size[0]) // 2, (padding.size[1] - image.size[1]) // 2))
