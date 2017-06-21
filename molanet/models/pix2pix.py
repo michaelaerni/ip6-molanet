@@ -166,7 +166,7 @@ class Pix2PixLossFactory(ObjectiveFactory):
 
         if apply_summary:
             tf.summary.scalar("generator_loss", loss)
-            tf.summary.scalar("discriminator_loss_discriminator", loss_discriminator)
-            tf.summary.scalar("discriminator_loss_l1_unscaled", l1_loss)
+            tf.summary.scalar("generator_loss_discriminator", loss_discriminator)
+            tf.summary.scalar("generator_loss_l1_unscaled", l1_loss)
 
         return loss
