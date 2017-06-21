@@ -30,7 +30,7 @@ def conv2d(features, feature_count, name, use_batchnorm=True, stride=2, do_activ
 
 def conv2d_transpose(features, feature_count, output_size, name, keep_prob, batch_size, concat_activations=None, use_batchnorm=True, do_activation=True):
 
-    w = weight_variable("w_" + name, [3, 3, feature_count, features.get_shape()[-1]])
+    w = weight_variable("w_" + name, [4, 4, feature_count, features.get_shape()[-1]])
     b = bias_variable("b_" + name, [feature_count])
     conv = tf.nn.bias_add(tf.nn.conv2d_transpose(features, w, output_shape=[batch_size, output_size, output_size, feature_count], strides=[1, 2, 2, 1], padding="SAME"), b)  # TODO: Padding?
     if use_batchnorm:
@@ -74,7 +74,7 @@ class Pix2PixFactory(NetworkFactory):
 
             # Encoder
             while layer_size > 1:
-                use_batchnorm = True # TODO: Correct batch norm usage
+                use_batchnorm = layer_index > 0 and layer_size // 2 > 1
                 input_tensor, _, _ = conv2d(input_tensor, feature_count, f"enc_{layer_index}",
                                                   use_batchnorm=use_batchnorm)
                 encoder_activations.append(input_tensor)
