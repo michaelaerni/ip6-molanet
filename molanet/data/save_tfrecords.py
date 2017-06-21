@@ -8,13 +8,21 @@ from PIL import Image
 from tensorflow.python.lib.io.tf_record import TFRecordCompressionType, TFRecordWriter, TFRecordOptions
 
 from molanet.data.database import DatabaseConnection
-from molanet.data.entities import MoleSample
+from molanet.data.entities import MoleSample, UseCase
 
 
 class RecordSaver(object):
-    def __init__(self, rootdir: str, compressiontype: TFRecordCompressionType = TFRecordCompressionType.ZLIB):
+    def __init__(self, rootdir: str, compressiontype: TFRecordCompressionType = TFRecordCompressionType.ZLIB,
+                 log_saved_uuids=True):
         self.rootdir = rootdir
         self.options = TFRecordOptions(compressiontype)
+        self.log_saved_uuids = log_saved_uuids
+
+        for logfile in [self.get_logfile(UseCase.__getattr__(name)) for name in UseCase._member_names_]:
+            try:
+                os.remove(logfile)
+            except OSError:
+                pass
 
     def get_filename(self, sample: MoleSample) -> str:
         return path.join(self.rootdir, str(sample.use_case.name).lower(), sample.uuid[0:2], f"{sample.uuid}.tfrecord")
@@ -53,7 +61,16 @@ class RecordSaver(object):
         segmentation_array = (segmentation_array - 0.5) * 2.0  # Already in range [0, 1]
         return self._float_list(segmentation_array)
 
-    def writeSample(self, sample: MoleSample):
+    def get_logfile(self, usecase: UseCase):
+        return path.join(self.rootdir, f"{usecase.name}.txt")
+
+    def log_saved(self, sample: MoleSample):
+        with open(self.get_logfile(sample.use_case), "a") as logfile:
+            logfile.write(f"{sample.uuid}\n")
+
+    def writeSample(self, sample: MoleSample) -> bool:
+        if len(sample.segmentations) == 0: return False
+
         file = self.get_or_make_filename(sample)
 
         image = self._resize_image(sample.image, 512)
@@ -64,6 +81,9 @@ class RecordSaver(object):
 
         with TFRecordWriter(file, self.options) as writer:
             writer.write(example.SerializeToString())
+        if self.log_saved_uuids:
+            self.log_saved(sample)
+        return True
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
@@ -87,14 +107,15 @@ if __name__ == "__main__":
     # Parse arguments
     parser = create_arg_parser()
     args = parser.parse_args()
+    saver = RecordSaver(args.basedir)
 
     with DatabaseConnection(args.database_host, args.database, username=args.database_username,
                             password=args.database_password) as db:
 
-        saved_count = args.offset
+        sample_count = args.offset
         for sample in db.get_samples(args.offset, args.batch_size):
-            saver = RecordSaver(args.basedir)
-            saver.writeSample(sample)
-
-            print(f"[{saved_count}]: saved {sample.uuid}")
-            saved_count += 1
+            if saver.writeSample(sample):
+                print(f"[{sample_count}]: saved {sample.uuid}")
+            else:
+                print(f"[{sample_count}]: failed to save {sample.uuid}")
+            sample_count += 1
