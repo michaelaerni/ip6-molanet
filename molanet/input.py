@@ -42,7 +42,7 @@ def create_fixed_input_pipeline(
 
         # Read uuids into memory and create paths
         with io.open(meta_file) as f:
-            uuids = list([os.path.join(input_directory, uuid[:2], uuid).strip("\n") for uuid in f.readlines()])
+            uuids = list([os.path.join(input_directory, uuid[:2], uuid).strip("\n") + ".tfrecord" for uuid in f.readlines()])
 
         # Create an input producer which shuffles uuids, use seed if supplied
         input_producer = tf.train.string_input_producer(uuids, epochs, seed=seed)
