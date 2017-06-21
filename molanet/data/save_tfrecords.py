@@ -19,7 +19,6 @@ class RecordSaver(object):
         self.log_saved_uuids = log_saved_uuids
 
         for logfile in [self.get_logfile(UseCase.__getattr__(name)) for name in UseCase._member_names_]:
-            print(logfile)
             try:
                 os.remove(logfile)
             except OSError:
