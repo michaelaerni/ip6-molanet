@@ -1,3 +1,4 @@
+import argparse
 import os
 import shutil
 
@@ -7,13 +8,26 @@ from molanet.base import NetworkTrainer
 from molanet.input import create_fixed_input_pipeline
 from molanet.models.pix2pix import Pix2PixFactory, Pix2PixLossFactory
 
+
+def create_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser("Molanet PoC script")
+
+    parser.add_argument("--sampledir", type=str, help="Root sample directory")
+    parser.add_argument("--metafile", type=str, help="CSV file containing the UUIDs of the training samples")
+    parser.add_argument("--logdir", type=str, help="Directory into which summaries and checkpoints are written")
+
+    return parser
+
+
 if __name__ == "__main__":
-    SUMMARY_DIR = "/tmp/molanet_summary"
-    shutil.rmtree(SUMMARY_DIR, ignore_errors=True)
-    os.makedirs(SUMMARY_DIR)
+    parser = create_arg_parser()
+    args = parser.parse_args()
+
+    shutil.rmtree(args.logdir, ignore_errors=True)
+    os.makedirs(args.logdir)
 
     tf.reset_default_graph()
-    input_x, input_y = create_fixed_input_pipeline("/home/michael/temp/molanet/", "/home/michael/temp/molanet.csv", 5, 1, 512, thread_count=4)
+    input_x, input_y = create_fixed_input_pipeline(args.sampledir, args.metafile, 5, 1, 512, thread_count=4)
     print("Input pipeline created")
     trainer = NetworkTrainer(input_x, input_y, Pix2PixFactory(512), Pix2PixLossFactory(0.001), 0.001)
     print("Trainer created")
@@ -28,4 +42,4 @@ if __name__ == "__main__":
         tf.summary.image("segmentation", trainer._generator, max_outputs=1)
 
         print("Starting training")
-        trainer.train(sess, SUMMARY_DIR)
+        trainer.train(sess, args.logdir)
