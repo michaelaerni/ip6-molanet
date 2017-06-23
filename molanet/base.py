@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+
 class NetworkFactory(object):
     """
     Factory for generator and discriminator networks.
@@ -80,6 +81,7 @@ class ObjectiveFactory(object):
             self,
             x: tf.Tensor,
             y: tf.Tensor,
+            generator: tf.Tensor,
             generator_discriminator: tf.Tensor,
             real_discriminator: tf.Tensor,
             apply_summary: bool = True
@@ -89,6 +91,7 @@ class ObjectiveFactory(object):
 
         :param x: Input tensor which is fed to the generator
         :param y: Ground truth output for the given x
+        :param generator: Generated output for the given x
         :param generator_discriminator: Discriminator logits for the generated output corresponding to the x
         :param real_discriminator: Discriminator logits for the ground truth output
         :param apply_summary: If True, summary operations will be added to the graph. Defaults to True.
@@ -117,7 +120,7 @@ class NetworkTrainer(object):
         self._generator_loss = objective_factory.create_generator_loss(
             x, y, self._generator, self._discriminator_generated)
         self._discriminator_loss = objective_factory.create_discriminator_loss(
-            x, y, self._discriminator_generated, self._discriminator_real)
+            x, y, self._generator, self._discriminator_generated, self._discriminator_real)
 
         # Create optimizers
         trainable_variables = tf.trainable_variables()
@@ -130,6 +133,9 @@ class NetworkTrainer(object):
         self._op_generator = self._optimizer_generator.minimize(self._generator_loss, var_list=variables_generator)
         self._op_discriminator = self._optimizer_discriminator.minimize(self._discriminator_loss, var_list=variables_discriminator)
 
+        # Iteration counter
+        self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.uint16)
+
     def train(self, sess: tf.Session, summary_directory: str):
         # TODO: Remove prints everywhere
 
@@ -141,11 +147,18 @@ class NetworkTrainer(object):
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
+        step_update = tf.assign_add(self._global_step, 1)
+
         try:
             while not coord.should_stop():
-                _, _, current_summary = sess.run([self._op_discriminator, self._op_generator, summary])
-                summary_writer.add_summary(current_summary)
-                print("Iteration done")
+                _, _, current_summary, _, iteration = sess.run([
+                    self._op_discriminator,
+                    self._op_generator,
+                    summary,
+                    step_update,
+                    self._global_step])
+                summary_writer.add_summary(current_summary, iteration)
+                print(f"Iteration {iteration} done")
 
         except tf.errors.OutOfRangeError:
             print("Epoch limit reached, training stopped")
