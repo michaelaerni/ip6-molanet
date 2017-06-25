@@ -29,7 +29,7 @@ if __name__ == "__main__":
     tf.reset_default_graph()
     input_x, input_y = create_fixed_input_pipeline(args.sampledir, args.metafile, 1, 1, 512, thread_count=4)
     print("Input pipeline created")
-    trainer = NetworkTrainer(input_x, input_y, Pix2PixFactory(512), Pix2PixLossFactory(0.001), 0.001)
+    trainer = NetworkTrainer(input_x, input_y, Pix2PixFactory(512), Pix2PixLossFactory(0.1), 0.001)
     print("Trainer created")
 
     with tf.Session() as sess:
@@ -40,6 +40,13 @@ if __name__ == "__main__":
         tf.summary.image("input_x", input_x, max_outputs=1)
         tf.summary.image("input_y", input_y, max_outputs=1)
         tf.summary.image("segmentation", trainer._generator, max_outputs=1)
+        tf.summary.image("generated_difference", tf.abs(tf.subtract(trainer._generator, input_y)), max_outputs=1)
+        concatenated_images = tf.concat([
+            input_x,
+            tf.tile(input_y, multiples=[1, 1, 1, 3]),
+            tf.tile(trainer._generator, multiples=[1, 1, 1, 3])
+        ], axis=2)
+        tf.summary.image("concatenated_images", concatenated_images, max_outputs=1)
 
         print("Starting training")
         trainer.train(sess, args.logdir)
