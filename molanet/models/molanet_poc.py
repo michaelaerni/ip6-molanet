@@ -39,9 +39,10 @@ if __name__ == "__main__":
     os.makedirs(logdir)
 
     tf.reset_default_graph()
-    input_x, input_y = create_fixed_input_pipeline(args.sampledir, args.metafile, 1, 1, 512, thread_count=4)
+    input_x, input_y = create_fixed_input_pipeline(args.sampledir, args.metafile, 1, 1, 512,
+                                                   thread_count=4, min_after_dequeue=10)
     print("Input pipeline created")
-    network_factory = Pix2PixFactory(512)
+    network_factory = Pix2PixFactory(512, weight_initializer=tf.uniform_unit_scaling_initializer(2.0))
     trainer = NetworkTrainer(input_x, input_y, network_factory, WassersteinGradientPenaltyFactory(10, network_factory), 0.0001, 0, 0.9)
     print("Trainer created")
 
