@@ -13,7 +13,7 @@ def bias_variable(name, shape):
 
 
 def conv2d(features, feature_count, name, use_batchnorm=True, stride=2, do_activation=True):
-    w = weight_variable("w_" + name, [4, 4, features.get_shape()[-1], feature_count])
+    w = weight_variable("w_" + name, [5, 5, features.get_shape()[-1], feature_count])
     b = bias_variable("b_" + name, [feature_count])
     conv = tf.nn.bias_add(tf.nn.conv2d(features, w, strides=[1, stride, stride, 1], padding="SAME"), b)  # TODO: Padding?
     if use_batchnorm:
@@ -30,8 +30,7 @@ def conv2d(features, feature_count, name, use_batchnorm=True, stride=2, do_activ
 
 
 def conv2d_transpose(features, feature_count, output_size, name, keep_prob, batch_size, concat_activations=None, use_batchnorm=True, do_activation=True):
-
-    w = weight_variable("w_" + name, [4, 4, feature_count, features.get_shape()[-1]])
+    w = weight_variable("w_" + name, [5, 5, feature_count, features.get_shape()[-1]])
     b = bias_variable("b_" + name, [feature_count])
     conv = tf.nn.bias_add(tf.nn.conv2d_transpose(features, w, output_shape=[batch_size, output_size, output_size, feature_count], strides=[1, 2, 2, 1], padding="SAME"), b)  # TODO: Padding?
     if use_batchnorm:

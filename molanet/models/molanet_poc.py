@@ -40,7 +40,7 @@ if __name__ == "__main__":
     tf.reset_default_graph()
     input_x, input_y = create_fixed_input_pipeline(args.sampledir, args.metafile, 1, 1, 512, thread_count=4)
     print("Input pipeline created")
-    trainer = NetworkTrainer(input_x, input_y, Pix2PixFactory(512), Pix2PixLossFactory(0.1), 0.001)
+    trainer = NetworkTrainer(input_x, input_y, Pix2PixFactory(512), Pix2PixLossFactory(100), 0.001)
     print("Trainer created")
 
     with tf.Session() as sess:
