@@ -1,3 +1,5 @@
+from typing import Union, Tuple
+
 import tensorflow as tf
 
 from molanet.base import NetworkFactory, ObjectiveFactory
@@ -111,9 +113,11 @@ class Pix2PixFactory(NetworkFactory):
             x: tf.Tensor,
             y: tf.Tensor,
             reuse: bool = False,
-            apply_summary: bool = True) -> tf.Tensor:
+            apply_summary: bool = True,
+            return_input_tensor: bool = False) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
         with tf.variable_scope("discriminator", reuse=reuse):
-            input_tensor = tf.concat((x, y), axis=3)
+            concatenated_input = tf.concat((x, y), axis=3)
+            input_tensor = concatenated_input
             layer_size = self._spatial_extent
             feature_count = 32
             max_feature_count = 512
@@ -127,7 +131,10 @@ class Pix2PixFactory(NetworkFactory):
                 feature_count = min(max_feature_count, feature_count * 2) if layer_size // 2 > 1 else 1
                 layer_index += 1
 
-            return input_tensor
+            if return_input_tensor:
+                return input_tensor, concatenated_input
+            else:
+                return input_tensor
 
 
 class Pix2PixLossFactory(ObjectiveFactory):

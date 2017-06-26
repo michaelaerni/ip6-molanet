@@ -1,3 +1,5 @@
+from typing import Union, Tuple
+
 import tensorflow as tf
 
 
@@ -32,8 +34,9 @@ class NetworkFactory(object):
             x: tf.Tensor,
             y: tf.Tensor,
             reuse: bool = False,
-            apply_summary: bool = True
-    ) -> tf.Tensor:
+            apply_summary: bool = True,
+            return_input_tensor: bool = False
+    ) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
         """
         Creates a discriminator network and optionally applies summary options where useful.
 
@@ -41,7 +44,10 @@ class NetworkFactory(object):
         :param y: Tensor of the generated or real value for the input x
         :param reuse: If False, the weights cannot exist yet, if True they will be reused. Defaults to False.
         :param apply_summary: If True, summary operations will be added to the graph. Defaults to True.
-        :return: Output tensor of the created discriminator as unscaled logits
+        :param return_input_tensor: If True, the concatenated input tensor which is fed to the network is returned too.
+        Defaults to False.
+        :return: Output tensor of the created discriminator as unscaled logits. If return_input_tensor is set to True,
+        the concatenated input tensor which is feed to the network is returned too.
         """
 
         raise NotImplementedError("This method should be overridden by child classes")
@@ -110,7 +116,9 @@ class NetworkTrainer(object):
             y: tf.Tensor,
             network_factory: NetworkFactory,
             objective_factory: ObjectiveFactory,
-            learning_rate: float):
+            learning_rate: float,
+            beta1: float = 0.9,
+            beta2: float = 0.999):
         # Create networks
         self._generator = network_factory.create_generator(x)
         self._discriminator_generated = network_factory.create_discriminator(x, self._generator)
@@ -127,8 +135,8 @@ class NetworkTrainer(object):
         variables_discriminator = [var for var in trainable_variables if var.name.startswith("discriminator")]
         variables_generator = [var for var in trainable_variables if var.name.startswith("generator")]
 
-        self._optimizer_generator = tf.train.AdamOptimizer(learning_rate, beta1=0.5, name="adam_generator")
-        self._optimizer_discriminator = tf.train.AdamOptimizer(learning_rate, beta1=0.5, name="adam_discriminator")
+        self._optimizer_generator = tf.train.AdamOptimizer(learning_rate, beta1, beta2, name="adam_generator")
+        self._optimizer_discriminator = tf.train.AdamOptimizer(learning_rate, beta1, beta2, name="adam_discriminator")
 
         self._op_generator = self._optimizer_generator.minimize(self._generator_loss, var_list=variables_generator)
         self._op_discriminator = self._optimizer_discriminator.minimize(self._discriminator_loss, var_list=variables_discriminator)
