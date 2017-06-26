@@ -39,7 +39,7 @@ if __name__ == "__main__":
     os.makedirs(logdir)
 
     tf.reset_default_graph()
-    input_x, input_y = create_fixed_input_pipeline(args.sampledir, args.metafile, 1, 1, 512,
+    input_x, input_y = create_fixed_input_pipeline(args.sampledir, args.metafile, 8, 10, 512,
                                                    thread_count=4, min_after_dequeue=10)
     print("Input pipeline created")
     network_factory = Pix2PixFactory(512)
@@ -56,14 +56,16 @@ if __name__ == "__main__":
         sess.run((tf.global_variables_initializer(), tf.local_variables_initializer()))
 
         print("Adding debug image summaries")
+        difference_image = tf.abs(tf.subtract(trainer._generator, input_y))
         tf.summary.image("input_x", input_x, max_outputs=1)
         tf.summary.image("input_y", input_y, max_outputs=1)
         tf.summary.image("segmentation", trainer._generator, max_outputs=1)
-        tf.summary.image("generated_difference", tf.abs(tf.subtract(trainer._generator, input_y)), max_outputs=1)
+        tf.summary.image("generated_difference", difference_image, max_outputs=1)
         concatenated_images = tf.concat([
             input_x,
             tf.tile(input_y, multiples=[1, 1, 1, 3]),
-            tf.tile(trainer._generator, multiples=[1, 1, 1, 3])
+            tf.tile(trainer._generator, multiples=[1, 1, 1, 3]),
+            tf.tile(difference_image, multiples=[1, 1, 1, 3])
         ], axis=2)
         tf.summary.image("concatenated_images", concatenated_images, max_outputs=1)
 
