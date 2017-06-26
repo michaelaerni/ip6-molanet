@@ -116,9 +116,12 @@ class NetworkTrainer(object):
             y: tf.Tensor,
             network_factory: NetworkFactory,
             objective_factory: ObjectiveFactory,
+            log_every_n: int,
             learning_rate: float,
             beta1: float = 0.9,
             beta2: float = 0.999):
+        self._log_every_n = log_every_n
+
         # Create networks
         self._generator = network_factory.create_generator(x)
         self._discriminator_generated = network_factory.create_discriminator(x, self._generator)
@@ -157,16 +160,25 @@ class NetworkTrainer(object):
 
         step_update = tf.assign_add(self._global_step, 1)
 
+        iteration = sess.run(self._global_step)
+
+        operations = [
+            self._op_discriminator,
+            self._op_generator,
+            step_update,
+            self._global_step]
+
         try:
             while not coord.should_stop():
-                _, _, current_summary, _, iteration = sess.run([
-                    self._op_discriminator,
-                    self._op_generator,
-                    summary,
-                    step_update,
-                    self._global_step])
-                summary_writer.add_summary(current_summary, iteration)
-                print(f"Iteration {iteration} done")
+                if iteration % self._log_every_n == 0:
+                    step_result = sess.run(operations + [summary])
+                    iteration = step_result[-2]
+                    current_summary = step_result[-1]
+                    summary_writer.add_summary(current_summary, iteration)
+                    print(f"Iteration {iteration} done")
+                else:
+                    step_result = sess.run(operations)
+                    iteration = step_result[-1]
 
         except tf.errors.OutOfRangeError:
             print("Epoch limit reached, training stopped")
