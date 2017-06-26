@@ -5,10 +5,11 @@ from molanet.base import ObjectiveFactory, NetworkFactory
 
 class WassersteinGradientPenaltyFactory(ObjectiveFactory):
 
-    def __init__(self, gradient_lambda: float, network_factory: NetworkFactory, seed: int = None):
-        self._gradient_lambda = gradient_lambda
+    def __init__(self, gradient_lambda: float, network_factory: NetworkFactory, l1_lambda: float = 0.0, seed: int = None):
+        self._gradient_lambda = tf.constant(gradient_lambda, dtype=tf.float32)
         self._seed = seed
         self._network_factory = network_factory
+        self._l1_lambda = l1_lambda
 
     def create_discriminator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
                                   generator_discriminator: tf.Tensor, real_discriminator: tf.Tensor,
@@ -56,6 +57,15 @@ class WassersteinGradientPenaltyFactory(ObjectiveFactory):
                 logits=generator_discriminator,
                 labels=tf.ones_like(generator_discriminator))
         )
+
+        if self._l1_lambda > 0.0:
+            l1_loss = tf.reduce_mean(tf.abs(tf.subtract(y, generator)))
+
+            if apply_summary:
+                tf.summary.scalar("generator_loss_l1", l1_loss)
+                tf.summary.scalar("generator_loss_discriminator", loss)
+
+            loss = loss + tf.constant(self._l1_lambda, dtype=tf.float32) * l1_loss
 
         if apply_summary:
             tf.summary.scalar("generator_loss", loss)

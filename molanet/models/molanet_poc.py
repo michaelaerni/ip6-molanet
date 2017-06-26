@@ -43,7 +43,12 @@ if __name__ == "__main__":
                                                    thread_count=4, min_after_dequeue=10)
     print("Input pipeline created")
     network_factory = Pix2PixFactory(512)
-    trainer = NetworkTrainer(input_x, input_y, network_factory, WassersteinGradientPenaltyFactory(10, network_factory), 0.0001, 0, 0.9)
+    trainer = NetworkTrainer(
+        input_x,
+        input_y,
+        network_factory,
+        WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=100),
+        0.0001, 0, 0.9)
     print("Trainer created")
 
     with tf.Session() as sess:
