@@ -12,8 +12,8 @@ def bias_variable(name, shape):
     return tf.get_variable(name, shape, initializer=tf.constant_initializer(0.0))
 
 
-def conv2d(features, feature_count, name, use_batchnorm=True, stride=2, do_activation=True):
-    w = weight_variable("w_" + name, [5, 5, features.get_shape()[-1], feature_count])
+def conv2d(features, feature_count, name, filter_size=5, use_batchnorm=True, stride=2, do_activation=True):
+    w = weight_variable("w_" + name, [filter_size, filter_size, features.get_shape()[-1], feature_count])
     b = bias_variable("b_" + name, [feature_count])
     conv = tf.nn.bias_add(tf.nn.conv2d(features, w, strides=[1, stride, stride, 1], padding="SAME"), b)  # TODO: Padding?
     if use_batchnorm:
@@ -29,8 +29,8 @@ def conv2d(features, feature_count, name, use_batchnorm=True, stride=2, do_activ
     return a, w, b
 
 
-def conv2d_transpose(features, feature_count, output_size, name, keep_prob, batch_size, concat_activations=None, use_batchnorm=True, do_activation=True):
-    w = weight_variable("w_" + name, [5, 5, feature_count, features.get_shape()[-1]])
+def conv2d_transpose(features, feature_count, output_size, name, keep_prob, batch_size, filter_size=5, concat_activations=None, use_batchnorm=True, do_activation=True):
+    w = weight_variable("w_" + name, [filter_size, filter_size, feature_count, features.get_shape()[-1]])
     b = bias_variable("b_" + name, [feature_count])
     conv = tf.nn.bias_add(tf.nn.conv2d_transpose(features, w, output_shape=[batch_size, output_size, output_size, feature_count], strides=[1, 2, 2, 1], padding="SAME"), b)  # TODO: Padding?
     if use_batchnorm:
@@ -75,8 +75,9 @@ class Pix2PixFactory(NetworkFactory):
             # Encoder
             while layer_size > 1:
                 use_batchnorm = layer_index > 0 and layer_size // 2 > 1
+                filter_sizes = 5 if layer_index == 0 else 4
                 input_tensor, _, _ = conv2d(input_tensor, feature_count, f"enc_{layer_index}",
-                                                  use_batchnorm=use_batchnorm)
+                                            filter_size=filter_sizes, use_batchnorm=use_batchnorm)
                 encoder_activations.append(input_tensor)
                 feature_count = min(max_feature_count, feature_count * 2)
                 layer_size = layer_size // 2
@@ -87,17 +88,19 @@ class Pix2PixFactory(NetworkFactory):
             # Decoder
             # TODO: Initial image is not concatenated
             for idx in range(layer_count):
-                use_batchnorm = True if idx < layer_count - 1 else False
+                use_batchnorm = idx < layer_count - 1
                 keep_probability = tf.constant(0.5) if idx < 3 else tf.constant(1.0) # TODO: When to use dropout
                 encoder_index = layer_count - idx - 1 - 1
                 target_layer_size = 2 ** (idx + 1)
                 do_activation = encoder_index > 0
+                filter_sizes = 4 if idx < layer_count - 1 else 5
                 feature_count = min(max_feature_count, min_feature_count * (2 ** encoder_index))\
                     if encoder_index >= 0 else 1
                 input_tensor, _, _ = conv2d_transpose(input_tensor, feature_count,
                                                     target_layer_size,
                                                     f"dec_{idx}", keep_probability, batch_size,
-                                                    encoder_activations[encoder_index] if encoder_index >= 0 else None,
+                                                    filter_size=filter_sizes,
+                                                    concat_activations=encoder_activations[encoder_index] if encoder_index >= 0 else None,
                                                     use_batchnorm=use_batchnorm,
                                                     do_activation=do_activation)
 
@@ -117,8 +120,9 @@ class Pix2PixFactory(NetworkFactory):
             layer_index = 0
 
             while layer_size > 1:
+                filter_sizes = 5 if layer_index == 0 else 4
                 input_tensor, _, _ = conv2d(input_tensor, feature_count, str(layer_index), use_batchnorm=False,
-                                      do_activation=layer_size // 2 > 1)
+                                            filter_size=filter_sizes, do_activation=layer_size // 2 > 1)
                 layer_size = layer_size // 2
                 feature_count = min(max_feature_count, feature_count * 2) if layer_size // 2 > 1 else 1
                 layer_index += 1
