@@ -1,4 +1,5 @@
 import tensorflow as tf
+
 from molanet.base import NetworkFactory, ObjectiveFactory
 from molanet.operations import leaky_relu
 
@@ -87,7 +88,7 @@ class Pix2PixFactory(NetworkFactory):
             # Decoder
             # TODO: Initial image is not concatenated
             for idx in range(layer_count):
-                use_batchnorm = True # TODO: When to use batchnorm
+                use_batchnorm = True if idx < layer_count - 1 else False
                 keep_probability = tf.constant(0.5) if idx < 3 else tf.constant(1.0) # TODO: When to use dropout
                 encoder_index = layer_count - idx - 1 - 1
                 target_layer_size = 2 ** (idx + 1)
