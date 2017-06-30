@@ -39,7 +39,7 @@ if __name__ == "__main__":
     os.makedirs(logdir)
 
     tf.reset_default_graph()
-    input_x, input_y = create_fixed_input_pipeline(args.sampledir, args.metafile, 1, 10, 512,
+    input_x, input_y = create_fixed_input_pipeline(args.sampledir, args.metafile, 1, 20, 512,
                                                    thread_count=4, min_after_dequeue=10)
     print("Input pipeline created")
     network_factory = Pix2PixFactory(512)
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         input_x,
         input_y,
         network_factory,
-        WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=100),
+        WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=0),
         log_every_n=10,
         learning_rate=0.0001, beta1=0, beta2=0.9)
     print("Trainer created")

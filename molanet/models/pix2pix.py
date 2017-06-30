@@ -105,7 +105,7 @@ class Pix2PixFactory(NetworkFactory):
         conv = tf.nn.bias_add(tf.nn.conv2d(features, w, strides=[1, stride, stride, 1], padding="SAME"),
                               b)  # TODO: Padding?
         if use_batchnorm:
-            bn = tf.contrib.layers.batch_norm(conv, decay=0.9, epsilon=1e-5)  # TODO: Params?
+            bn = tf.contrib.layers.batch_norm(conv, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
         else:
             bn = conv
 
@@ -124,7 +124,7 @@ class Pix2PixFactory(NetworkFactory):
             tf.nn.conv2d_transpose(features, w, output_shape=[batch_size, output_size, output_size, feature_count],
                                    strides=[1, 2, 2, 1], padding="SAME"), b)  # TODO: Padding?
         if use_batchnorm:
-            bn = tf.contrib.layers.batch_norm(conv, decay=0.9, epsilon=1e-5)  # TODO: Params?
+            bn = tf.contrib.layers.batch_norm(conv, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
         else:
             bn = conv
         d = tf.nn.dropout(bn, keep_prob)
