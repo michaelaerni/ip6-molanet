@@ -5,7 +5,7 @@ from datetime import datetime
 
 import tensorflow as tf
 
-from molanet.base import NetworkTrainer
+from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import create_fixed_input_pipeline
 from molanet.models.pix2pix import Pix2PixFactory
 from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     logdir: str
     if args.logsubdir:
         now = datetime.now()
-        subdirname = f"tfrun_{now.day:02}_{now.month:02}_{now.hour:02}{now.minute:02}"
+        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}"
         logdir = os.path.join(args.logdir, subdirname)
     else:
         logdir = args.logdir
@@ -48,7 +48,7 @@ if __name__ == "__main__":
         input_y,
         network_factory,
         WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=0),
-        log_every_n=10,
+        training_options=TrainingOptions(summary_directory=logdir),
         learning_rate=0.0001, beta1=0, beta2=0.9)
     print("Trainer created")
 
@@ -70,4 +70,4 @@ if __name__ == "__main__":
         tf.summary.image("concatenated_images", concatenated_images, max_outputs=1)
 
         print("Starting training")
-        trainer.train(sess, logdir)
+        trainer.train(sess)

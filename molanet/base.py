@@ -1,6 +1,10 @@
-from typing import Union, Tuple
+import os
+import shutil
+from typing import Union, Tuple, NamedTuple
 
+import numpy as np
 import tensorflow as tf
+from PIL import Image
 
 
 class NetworkFactory(object):
@@ -107,6 +111,12 @@ class ObjectiveFactory(object):
         raise NotImplementedError("This method should be overridden by child classes")
 
 
+class TrainingOptions(NamedTuple):
+    summary_directory: str
+    save_summary_interval: int = 10
+    save_model_interval: int = 1000
+
+
 class NetworkTrainer(object):
     # TODO: Doc
 
@@ -116,11 +126,14 @@ class NetworkTrainer(object):
             y: tf.Tensor,
             network_factory: NetworkFactory,
             objective_factory: ObjectiveFactory,
-            log_every_n: int,
+            training_options: TrainingOptions,
             learning_rate: float,
             beta1: float = 0.9,
             beta2: float = 0.999):
-        self._log_every_n = log_every_n
+        self._training_options = training_options
+
+        self._x = x
+        self._y = y
 
         # Create networks
         self._generator = network_factory.create_generator(x)
@@ -147,12 +160,11 @@ class NetworkTrainer(object):
         # Iteration counter
         self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.uint16)
 
-    def train(self, sess: tf.Session, summary_directory: str):
+    def train(self, sess: tf.Session):
         # TODO: Remove prints everywhere
 
         # TODO: Better summary handling
         summary = tf.summary.merge_all()
-        summary_writer = tf.summary.FileWriter(summary_directory, sess.graph)
 
         # Start input enqueue threads.
         coord = tf.train.Coordinator()
@@ -168,13 +180,39 @@ class NetworkTrainer(object):
             step_update,
             self._global_step]
 
+        save_model_path = os.path.join(self._training_options.summary_directory, "model.ckpt")
+        save_image_path = os.path.join(self._training_options.summary_directory, "images/")
+
+        shutil.rmtree(save_image_path, ignore_errors=True)
+        os.makedirs(save_image_path)
+
+        concatenated_images = tf.cast(tf.round(tf.concat([
+            (self._x + 1.0) / 2.0 * 255.0,
+            tf.tile((self._y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+            tf.tile((self._generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+            tf.tile(tf.abs(tf.subtract(self._generator, self._y)), multiples=[1, 1, 1, 3]) * 255.0
+        ], axis=2)), dtype=tf.uint8)
+
+        saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
+        summary_writer = tf.summary.FileWriter(self._training_options.summary_directory, sess.graph)
         try:
             while not coord.should_stop():
-                if iteration % self._log_every_n == 0:
-                    step_result = sess.run(operations + [summary])
-                    iteration = step_result[-2]
-                    current_summary = step_result[-1]
+                if iteration % self._training_options.save_model_interval == 0:
+                    saver.save(sess, save_model_path, global_step=iteration)
+
+                if iteration % self._training_options.save_summary_interval == 0:
+                    step_result = sess.run(operations + [summary, concatenated_images])
+                    iteration = step_result[-3]
+                    current_summary = step_result[-2]
                     summary_writer.add_summary(current_summary, iteration)
+
+                    generated_images = step_result[-1]
+                    # TODO: Don't use hardcoded size
+                    # Take first image for output
+                    output_image = np.reshape(generated_images[0], (512, 512 * 4, 3))
+                    Image.fromarray(output_image, "RGB").save(
+                        os.path.join(save_image_path, f"sample_{iteration:08d}.png"))
+
                     print(f"Iteration {iteration} done")
                 else:
                     step_result = sess.run(operations)
@@ -183,6 +221,7 @@ class NetworkTrainer(object):
         except tf.errors.OutOfRangeError:
             print("Epoch limit reached, training stopped")
         finally:
+            summary_writer.close()
             coord.request_stop()
 
         print("Waiting for threads to finish...")
