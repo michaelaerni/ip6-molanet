@@ -52,7 +52,7 @@ if __name__ == "__main__":
         learning_rate=0.0001, beta1=0, beta2=0.9)
     print("Trainer created")
 
-    with tf.Session() as sess:
+    with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
         print("Session started")
         sess.run((tf.global_variables_initializer(), tf.local_variables_initializer()))
 
