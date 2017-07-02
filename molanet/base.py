@@ -163,6 +163,27 @@ class NetworkTrainer(object):
     def train(self, sess: tf.Session):
         # TODO: Remove prints everywhere
 
+        # Create summaries
+        generated_classes = tf.round((self._generator + 1.0) / 2.0)
+        real_classes = (self._y + 1.0) / 2.0
+        generated_positives = tf.reduce_sum(generated_classes)
+        real_positives = tf.reduce_sum(real_classes)
+        # TODO: Accuracy seems to be wrong
+        accuracy = tf.reduce_mean(tf.cast(tf.equal(generated_classes, real_classes), dtype=tf.float32))
+        true_positives = tf.reduce_sum(tf.cast(
+            tf.logical_and(
+                tf.equal(real_classes, tf.ones_like(real_classes)),
+                tf.equal(generated_classes, real_classes)),
+            dtype=tf.float32))
+        precision = true_positives / generated_positives
+        recall = true_positives / real_positives
+        f1_score = 2.0 * precision * recall / (precision + recall)
+
+        tf.summary.scalar("accuracy", accuracy)
+        tf.summary.scalar("precision", precision)
+        tf.summary.scalar("recall", recall)
+        tf.summary.scalar("f1_score", f1_score)
+
         # TODO: Better summary handling
         summary = tf.summary.merge_all()
 
