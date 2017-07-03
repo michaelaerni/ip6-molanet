@@ -204,8 +204,8 @@ class NetworkTrainer(object):
         save_model_path = os.path.join(self._training_options.summary_directory, "model.ckpt")
         save_image_path = os.path.join(self._training_options.summary_directory, "images/")
 
-        shutil.rmtree(save_image_path, ignore_errors=True)
-        os.makedirs(save_image_path)
+        if not os.path.exists(save_image_path):
+            os.makedirs(save_image_path)
 
         concatenated_images = tf.cast(tf.round(tf.concat([
             (self._x + 1.0) / 2.0 * 255.0,
