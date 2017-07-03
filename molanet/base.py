@@ -249,3 +249,7 @@ class NetworkTrainer(object):
         coord.join(threads)
 
         print("Training finished")
+
+    def restore(self, sess, restore):
+        saver = tf.train.Saver()
+        saver.restore(sess, os.path.join(self._training_options.summary_directory, f"model.ckpt-{restore}"))
