@@ -158,7 +158,7 @@ class NetworkTrainer(object):
         self._op_discriminator = self._optimizer_discriminator.minimize(self._discriminator_loss, var_list=variables_discriminator)
 
         # Iteration counter
-        self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.uint16)
+        self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.int32)
 
     def train(self, sess: tf.Session):
         # TODO: Remove prints everywhere
