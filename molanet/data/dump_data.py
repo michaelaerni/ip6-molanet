@@ -1,8 +1,9 @@
 import argparse
-import os
-import png
-import shutil
 import json
+import os
+import shutil
+
+import png
 
 from molanet.data.database import DatabaseConnection
 
@@ -50,7 +51,7 @@ if __name__ == "__main__":
         os.makedirs(meta_directory, exist_ok=True)
         os.makedirs(segmentation_directory, exist_ok=True)
 
-        dump_count = 0
+        dump_count = args.offset
         for sample in db.get_samples(offset=args.offset):
 
             # Write mole image
