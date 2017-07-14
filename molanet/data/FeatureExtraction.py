@@ -38,52 +38,68 @@ def hasPlaster(imagepath: str) -> bool:
     :return: true if we are confident the image has a plaseter, false otherwise
     """
     img = cv2.imread(imagepath)
-    """
-    Rcr = 133 173
-    Rcb = 77 127
-    
-    convert RGB to YCrCb
-    """
-    print(cv2.__version__)
 
-    imgYCC = cv2.cvtColor(img, cv2.COLOR_BGR2YCR_CB)
-    colors = ('y', 'r', 'b')
-    hist = []
-    for idx, color in enumerate(colors):
-        h = cv2.calcHist([imgYCC], [idx], None, [256], [0, 256])
-        n = cv2.normalize(h, 0, 1, norm_type=cv2.NORM_L2, dtype=cv2.CV_32F)
-        hist.append(n)
+    # resize
+    im512 = cv2.cv2.resize(img, (512, 512), interpolation=cv2.INTER_CUBIC)
 
-    lowerCr = sum(hist[1][0:132])
-    higherCr = sum(hist[1][173:])
-    lowerCb = sum(hist[2][0:76])
-    higherCb = sum(hist[2][127:])
+    # get 16 patches of size 128,128
 
-    crSkin = sum(hist[1][133:173])
-    cbSkin = sum(hist[2][77:127])
 
-    crOutside = lowerCr + higherCr
-    cr = sum(hist[1])
+    def analyzeYCrCb(img):
+        """
+           See: CHAI AND NGAN: FACE SEGMENTATION USING SKIN-COLOR MAP p. 555 in IEE
+           RCR_MIN = 133
+           RCR_MAX = 173
+           RCB_MIN = 77
+           RCB_MAX = 127
 
-    cboutside = lowerCb + higherCb
-    cb = sum(hist[2])
+           convert RGB to YCrCb
+           """
 
-    print(lowerCr, higherCr, lowerCr + higherCr)
-    print(lowerCb, higherCb, lowerCb + higherCb)
-    print(f"cr skin={crSkin/cr} noskin={crOutside/cr}")
-    print(f"cb skin={cbSkin/cb} noskin={cboutside/cb}")
+        RCR_MIN = 130
+        RCR_MAX = 180
+        RCB_MIN = 77
+        RCB_MAX = 127
 
-    # plotting
-    plt.subplot(311)
-    plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-    # plt.axes("off")
-    plt.subplot(312)
+        imgYCC = cv2.cvtColor(img, cv2.COLOR_BGR2YCR_CB)
+        colors = ('y', 'r', 'b')
+        hist = []
 
-    for idx, h in enumerate(hist):
-        plt.plot(h, colors[idx])
+        for idx, color in enumerate(colors):
+            h = cv2.calcHist([imgYCC], [idx], None, [256], [0, 256])
+            n = cv2.normalize(h, 0, 1, norm_type=cv2.NORM_L2, dtype=cv2.CV_32F)
+            hist.append(n)
 
-    plt.xlim([0, 255])
-    plt.show()
+        lowerCr = sum(hist[1][0:RCR_MIN])
+        higherCr = sum(hist[1][RCR_MAX:])
+        lowerCb = sum(hist[2][0:RCB_MIN])
+        higherCb = sum(hist[2][RCB_MAX:])
+
+        crSkin = sum(hist[1][RCR_MIN:RCR_MAX])
+        cbSkin = sum(hist[2][RCB_MIN:RCB_MAX])
+
+        crOutside = lowerCr + higherCr
+        cr = sum(hist[1])
+
+        cboutside = lowerCb + higherCb
+        cb = sum(hist[2])
+
+        print(lowerCr, higherCr, lowerCr + higherCr)
+        print(lowerCb, higherCb, lowerCb + higherCb)
+        print(f"cr skin={crSkin/cr} noskin={crOutside/cr}")
+        print(f"cb skin={cbSkin/cb} noskin={cboutside/cb}")
+
+        # plotting
+        plt.subplot(311)
+        plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        # plt.axes("off")
+        plt.subplot(312)
+
+        for idx, h in enumerate(hist):
+            plt.plot(h, colors[idx])
+
+        plt.xlim([0, 255])
+        plt.show()
 
     return False
 
@@ -135,7 +151,7 @@ if __name__ == '__main__':
 
     path = args.images_dir
     paths = [os.path.join(path, it) for it in os.listdir(path)]
-    # paths = [os.path.join(path, f"{it}.png") for it in known_ids]
+    paths = [os.path.join(path, f"{it}.png") for it in known_ids]
 
     for idx, img in enumerate(paths):
         hasPlaster(img)
