@@ -1,8 +1,10 @@
 import argparse
 import os
 
+import cv2
 import numpy as np
 from PIL import Image
+from matplotlib import pyplot as plt
 
 
 def isSkin(r: int, g: int, b: int) -> bool:
@@ -24,12 +26,69 @@ def isSkin(r: int, g: int, b: int) -> bool:
         int(r) - int(g)) > 15 and r > g and r > b
 
 
-def hasPlaster(img: Image) -> bool:
+def hasPlaster(imagepath: str) -> bool:
     """
     Detects if an image has non skin colored regions
+    the regions we wish to identify typically have the following properties:
+    * sized about 1/10th the size of the image
+    * very different color from the usual skin color (blue,yellow,purple,bright red)
+    * often circular (but not alays)
+    *
 
     :return: true if we are confident the image has a plaseter, false otherwise
     """
+    img = cv2.imread(imagepath)
+    """
+    Rcr = 133 173
+    Rcb = 77 127
+    
+    convert RGB to YCrCb
+    """
+    print(cv2.__version__)
+
+    imgYCC = cv2.cvtColor(img, cv2.COLOR_BGR2YCR_CB)
+    colors = ('y', 'r', 'b')
+    hist = []
+    for idx, color in enumerate(colors):
+        h = cv2.calcHist([imgYCC], [idx], None, [256], [0, 256])
+        n = cv2.normalize(h, 0, 1, norm_type=cv2.NORM_L2, dtype=cv2.CV_32F)
+        hist.append(n)
+
+    lowerCr = sum(hist[1][0:132])
+    higherCr = sum(hist[1][173:])
+    lowerCb = sum(hist[2][0:76])
+    higherCb = sum(hist[2][127:])
+
+    crSkin = sum(hist[1][133:173])
+    cbSkin = sum(hist[2][77:127])
+
+    crOutside = lowerCr + higherCr
+    cr = sum(hist[1])
+
+    cboutside = lowerCb + higherCb
+    cb = sum(hist[2])
+
+    print(lowerCr, higherCr, lowerCr + higherCr)
+    print(lowerCb, higherCb, lowerCb + higherCb)
+    print(f"cr skin={crSkin/cr} noskin={crOutside/cr}")
+    print(f"cb skin={cbSkin/cb} noskin={cboutside/cb}")
+
+    # plotting
+    plt.subplot(311)
+    plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    # plt.axes("off")
+    plt.subplot(312)
+
+    for idx, h in enumerate(hist):
+        plt.plot(h, colors[idx])
+
+    plt.xlim([0, 255])
+    plt.show()
+
+    return False
+
+
+def countNonSkinPixels(img: Image) -> bool:
     a: np.ndarray = np.asarray(img, dtype=np.uint8)
 
     d = [tuple(v) for m2d in a for v in m2d]  # wtf stackoverflow
@@ -38,8 +97,7 @@ def hasPlaster(img: Image) -> bool:
 
     skinpix = [(r, g, b) for r, g, b in d if isSkin(r, g, b)]
 
-    print(f"skin pixels {len(skinpix)}, non-skin pixels: {len(d)-len(skinpix)}")
-
+    print(f"skin pixels {len(skinpix)/len(d)}, non-skin pixels: {len(d)-len(skinpix)/len(d)}")
 
 def experimentalplaster(img: Image):
     assert img.mode == 'RGB'
@@ -51,7 +109,7 @@ def experimentalplaster(img: Image):
     for y in range(height):
         for x in range(width):
             (r, g, b) = pix[x, y]
-            if not isSkin(r, g, b) and not (r == 0 and b == 0 and g == 0):
+            if not (isSkin(r, g, b) or (r == 0 and b == 0 and g == 0)):
                 pix[x, y] = (255, 0, 0)
 
     img.show()
@@ -79,9 +137,8 @@ if __name__ == '__main__':
     paths = [os.path.join(path, it) for it in os.listdir(path)]
     # paths = [os.path.join(path, f"{it}.png") for it in known_ids]
 
-    for idx, img in enumerate(getImages(paths)):
-        print(idx)
+    for idx, img in enumerate(paths):
         hasPlaster(img)
-        experimentalplaster(img)
+        #experimentalplaster(img)
         if idx > 5: break
         # img.show()
