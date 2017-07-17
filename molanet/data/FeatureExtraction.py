@@ -31,7 +31,9 @@ def compute_features(sample: MoleSample):
 def extract_features(samples: Iterable[MoleSample],
                      features_csv_path: str,
                      discarded_csv_path: str,
-                     fieldnames: [str], delimiter=';'):
+                     fieldnames: [str],
+                     delimiter=';',
+                     offset=0):
     with open(features_csv_path, 'w', newline='') as csvfile:
         with open(discarded_csv_path, 'w', newline='') as discarded_csv:
             writer = csv.DictWriter(csvfile,
@@ -42,7 +44,6 @@ def extract_features(samples: Iterable[MoleSample],
             writer.writeheader()
             discardedWriter = csv.writer(discarded_csv, delimiter=' ',
                                          quotechar='|', quoting=csv.QUOTE_MINIMAL)
-
             count = offset
             for sample in samples:
                 count += 1
@@ -51,6 +52,7 @@ def extract_features(samples: Iterable[MoleSample],
 
                 for features in compute_features(sample):
                     writer.writerow(features)
+                print(f"{count} done")
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
@@ -72,7 +74,7 @@ if __name__ == "__main__":
     parser = create_arg_parser()
     args = parser.parse_args()
 
-    offset = 0
+    offset = args.offset
     fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size']
     delimiter = ";"
     features_csv_path = 'features.csv'
@@ -84,11 +86,14 @@ if __name__ == "__main__":
             username=args.database_username,
             password=args.database_password) as db:
 
+        features_csv_path = f"{features_csv_path}_{offset}"
+        discarded_csv_path = f"{discarded_csv_path}_{offset}"
         extract_features(db.get_samples(offset=offset),
                          features_csv_path,
                          discarded_csv_path,
                          fieldnames,
-                         delimiter=delimiter)
+                         delimiter=delimiter,
+                         offset=offset)
 
     with open('features.csv') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=delimiter)
