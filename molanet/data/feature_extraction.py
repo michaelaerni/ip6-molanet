@@ -91,9 +91,7 @@ if __name__ == "__main__":
             args.database,
             username=args.database_username,
             password=args.database_password) as db:
-
-        features_csv_path = f"{features_csv_path}_{offset}"
-        discarded_csv_path = f"{discarded_csv_path}_{offset}"
+        
         extract_features(db.get_samples(offset=offset),
                          features_csv_path,
                          discarded_csv_path,
