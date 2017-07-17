@@ -52,8 +52,7 @@ def extract_features(samples: Iterable[MoleSample],
 
                 for features in compute_features(sample):
                     writer.writerow(features)
-                print(f"{count} done")
-
+                if (count % 300 == 0): print(f"{count}: computed features for {count-offset} samples")
 
 def create_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser("Dump all images including metadata from a database into a directory")
