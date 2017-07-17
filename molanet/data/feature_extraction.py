@@ -1,5 +1,6 @@
 import argparse
 import csv
+import os
 from typing import Iterable
 
 import molanet.data.data_analysis as data
@@ -52,10 +53,12 @@ def extract_features(samples: Iterable[MoleSample],
 
                 for features in compute_features(sample):
                     writer.writerow(features)
-                if (count % 300 == 0): print(f"{count}: computed features for {count-offset} samples")
+                if (count % 300 == 0):
+                    print(f"{count}: computed features for {count-offset} samples")
+
 
 def create_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser("Dump all images including metadata from a database into a directory")
+    parser = argparse.ArgumentParser("Extract useful features")
 
     parser.add_argument("--offset", type=int, default=0, help="Starting offset in data set")
 
@@ -64,6 +67,8 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--database-username", default=None, help="Target database username")
     parser.add_argument("--database-password", default=None, help="Target database password")
     parser.add_argument("--database-port", type=int, default=5432, help="Target database port")
+
+    parser.add_argument("--features-path", type=str, default="", help="path folder for features csv file")
 
     return parser
 
@@ -76,8 +81,10 @@ if __name__ == "__main__":
     offset = args.offset
     fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size']
     delimiter = ";"
-    features_csv_path = 'features.csv'
-    discarded_csv_path = 'discarded.csv'
+    features_csv_path = f"features_{offset}.csv"
+    discarded_csv_path = f"discarded_{offset}.csv"
+    features_csv_path = os.path.join(args.features_path, features_csv_path)
+    discarded_csv_path = os.path.join(args.features_path, discarded_csv_path)
 
     with DatabaseConnection(
             args.database_host,
@@ -94,7 +101,8 @@ if __name__ == "__main__":
                          delimiter=delimiter,
                          offset=offset)
 
-    with open('features.csv') as csvfile:
+    with open(features_csv_path) as csvfile:
         reader = csv.DictReader(csvfile, delimiter=delimiter)
+        print(reader.fieldname)
         for row in reader:
-            print(row['uuid'])
+            print([row[name] for name in fieldnames])
