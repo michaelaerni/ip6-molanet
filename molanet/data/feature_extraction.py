@@ -103,6 +103,6 @@ if __name__ == "__main__":
 
     with open(features_csv_path) as csvfile:
         reader = csv.DictReader(csvfile, delimiter=delimiter)
-        print(reader.fieldname)
+        print(reader.fieldnames)
         for row in reader:
             print([row[name] for name in fieldnames])
