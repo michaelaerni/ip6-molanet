@@ -63,8 +63,11 @@ def extract_features(samples: Iterable[MoleSample],
                 except ValueError:
                     print(f"{count}: ValueError in sample {sample.uuid}")
                     pass
+                except ZeroDivisionError:
+                    print(f"{count}: ZeroDivisionError in sample {sample.uuid}")
+                    pass
 
-                
+
 def count_features(features_csv_path: str, bins=7):
     with open(features_csv_path) as csvfile:
         reader = csv.DictReader(csvfile, delimiter=delimiter)
@@ -133,7 +136,7 @@ if __name__ == "__main__":
     parser = create_arg_parser()
     args = parser.parse_args()
 
-    offset = args.offset
+    offset = 606
     fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size']
     delimiter = ";"
     features_csv_path = f"features_{offset}.csv"
