@@ -176,9 +176,12 @@ class NetworkTrainer(object):
                 tf.equal(real_classes, tf.ones_like(real_classes)),
                 tf.equal(generated_classes, real_classes)),
             dtype=tf.float32))
-        precision = true_positives / generated_positives
-        recall = true_positives / real_positives
-        f1_score = 2.0 * precision * recall / (precision + recall)
+        # TODO: Zero handling in precision, recall and f1 are a bit wonky, discuss and fix this
+        precision = tf.cond(generated_positives > 0, lambda: true_positives / generated_positives, lambda: 1.0)
+        recall = tf.cond(real_positives > 0, lambda: true_positives / real_positives, lambda: 1.0)
+        f1_score = tf.cond(tf.logical_and(precision > 0, recall > 0),
+                           lambda: 2.0 * precision * recall / (precision + recall),
+                           lambda: 0.0)
 
         tf.summary.scalar("accuracy", accuracy)
         tf.summary.scalar("precision", precision)
