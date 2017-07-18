@@ -18,8 +18,11 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--metafile", type=str, help="CSV file containing the UUIDs of the training samples")
     parser.add_argument("--logdir", type=str, help="Directory into which summaries and checkpoints are written")
     parser.add_argument("--restore", type=int, help="If set, restores the model from logdir with the given iteration")
-    parser.add_argument("--logsubdir", action='store_true',
+    parser.add_argument("--debug-placement", action="store_true", help="Output device placement")
+    parser.add_argument("--logsubdir", action="store_true",
                         help="creates a subdirectory in the Directory logdir into which summaries and checkpoints are written")
+    parser.add_argument("--discriminator-iterations", type=int, default=1,
+                        help="Number of discriminator iterations in training")
 
     return parser
 
@@ -50,30 +53,22 @@ if __name__ == "__main__":
         input_y,
         network_factory,
         WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=0),
-        training_options=TrainingOptions(summary_directory=logdir),
+        training_options=TrainingOptions(
+            summary_directory=logdir,
+            discriminator_iterations=args.discriminator_iterations),
         learning_rate=0.0001, beta1=0, beta2=0.9)
     print("Trainer created")
 
-    with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
+    if args.debug_placement:
+        print("Device placement logging is enabled")
+
+    with tf.Session(config=tf.ConfigProto(log_device_placement=args.debug_placement)) as sess:
         print("Session started")
         sess.run((tf.global_variables_initializer(), tf.local_variables_initializer()))
 
         if args.restore is not None:
             trainer.restore(sess, args.restore)
             print(f"Iteration {args.restore} restored")
-
-        print("Adding debug image summaries")
-        difference_image = tf.abs(tf.subtract(trainer._generator, input_y))
-        tf.summary.image("input_x", input_x, max_outputs=1)
-        tf.summary.image("input_y", input_y, max_outputs=1)
-        tf.summary.image("segmentation", trainer._generator, max_outputs=1)
-        tf.summary.image("generated_difference", difference_image, max_outputs=1)
-        concatenated_images = tf.concat([
-            input_x,
-            tf.tile(input_y, multiples=[1, 1, 1, 3]),
-            tf.tile(trainer._generator, multiples=[1, 1, 1, 3]),
-        ], axis=2)
-        tf.summary.image("concatenated_images", concatenated_images, max_outputs=1)
 
         print("Starting training")
         trainer.train(sess)
