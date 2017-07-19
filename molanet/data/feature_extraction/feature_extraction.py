@@ -6,7 +6,7 @@ from typing import Iterable
 import numpy as np
 from matplotlib import pyplot as plt
 
-import molanet.data.data_analysis as data
+import molanet.data.feature_extraction.data_analysis as data
 from molanet.data.database import DatabaseConnection
 from molanet.data.entities import MoleSample
 
