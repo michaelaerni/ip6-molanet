@@ -3,7 +3,6 @@ from typing import Tuple
 
 import cv2
 import numpy as np
-from matplotlib import pyplot as plt
 
 
 def contains_hair(image, line_threshold=10) -> bool:
@@ -103,35 +102,35 @@ def contains_plaster(image: np.ndarray, minConfidence: float = 0.4, debug=False)
         if np.abs(avgCb - avgCr) < 6 or \
                 ((avgY > 155 or avgY < 50) and np.abs(avgCb - avgCr) < 35):  isNonSkinConfidence = 0
 
-        if debug:
-            varY = np.median(img[:, :, 0])
-            varCr = np.median(img[:, :, 1])
-            varCb = np.median(img[:, :, 2])
-
-            lowerCr = sum(hist[1][0:RCR_MIN])
-            higherCr = sum(hist[1][RCR_MAX:])
-            lowerCb = sum(hist[2][0:RCB_MIN])
-            higherCb = sum(hist[2][RCB_MAX:])
-            crOutside = lowerCr + higherCr
-
-            print()
-            print(f" avg={avgY},{varY} Cr={avgCr},{varCr} Cb={avgCb},{varCb}")
-            print(f"cr (low,skin,high) {str(lowerCr), str(crSkin), str(higherCr)}")
-            print(f"cb (low,skin,high) {str(lowerCb), str(cbSkin), str(higherCb),}")
-            print(f"cr skin={crSkin/cr} noskin={crOutside/cr}")
-            print(f"cb skin={cbSkin/cb} noskin={cboutside/cb}")
-
-            # plotting
-            plt.subplot(311)
-            plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-            # plt.axes("off")
-            plt.subplot(312)
-
-            for idx, h in enumerate(hist):
-                plt.plot(h, colors[idx])
-
-            plt.xlim([0, 255])
-            plt.show()
+        #       if debug:
+        #           varY = np.median(img[:, :, 0])
+        #           varCr = np.median(img[:, :, 1])
+        #           varCb = np.median(img[:, :, 2])
+        #
+        #           lowerCr = sum(hist[1][0:RCR_MIN])
+        #           higherCr = sum(hist[1][RCR_MAX:])
+        #           lowerCb = sum(hist[2][0:RCB_MIN])
+        #           higherCb = sum(hist[2][RCB_MAX:])
+        #                   crOutside = lowerCr + higherCr
+        #
+        #            print()
+        #            print(f" avg={avgY},{varY} Cr={avgCr},{varCr} Cb={avgCb},{varCb}")
+        #            print(f"cr (low,skin,high) {str(lowerCr), str(crSkin), str(higherCr)}")
+        #            print(f"cb (low,skin,high) {str(lowerCb), str(cbSkin), str(higherCb),}")
+        #            print(f"cr skin={crSkin/cr} noskin={crOutside/cr}")
+        #            print(f"cb skin={cbSkin/cb} noskin={cboutside/cb}")
+        #
+        #            # plotting
+        #            plt.subplot(311)
+        #            plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        #            # plt.axes("off")
+        #            plt.subplot(312)
+        #
+        #            for idx, h in enumerate(hist):
+        #                plt.plot(h, colors[idx])
+        #
+        #            plt.xlim([0, 255])
+        #            plt.show()
         return isNonSkinConfidence
 
     for idx, patch in enumerate(patches(image, 256)):
