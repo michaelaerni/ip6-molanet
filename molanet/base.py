@@ -115,6 +115,7 @@ class TrainingOptions(NamedTuple):
     summary_directory: str
     save_summary_interval: int = 10
     save_model_interval: int = 1000
+    discriminator_iterations: int = 1
 
 
 class NetworkTrainer(object):
@@ -168,16 +169,19 @@ class NetworkTrainer(object):
         real_classes = (self._y + 1.0) / 2.0
         generated_positives = tf.reduce_sum(generated_classes)
         real_positives = tf.reduce_sum(real_classes)
-        # TODO: Accuracy seems to be wrong
+
         accuracy = tf.reduce_mean(tf.cast(tf.equal(generated_classes, real_classes), dtype=tf.float32))
         true_positives = tf.reduce_sum(tf.cast(
             tf.logical_and(
                 tf.equal(real_classes, tf.ones_like(real_classes)),
                 tf.equal(generated_classes, real_classes)),
             dtype=tf.float32))
-        precision = true_positives / generated_positives
-        recall = true_positives / real_positives
-        f1_score = 2.0 * precision * recall / (precision + recall)
+        # TODO: Zero handling in precision, recall and f1 are a bit wonky, discuss and fix this
+        precision = tf.cond(generated_positives > 0, lambda: true_positives / generated_positives, lambda: 1.0)
+        recall = tf.cond(real_positives > 0, lambda: true_positives / real_positives, lambda: 1.0)
+        f1_score = tf.cond(tf.logical_and(precision > 0, recall > 0),
+                           lambda: 2.0 * precision * recall / (precision + recall),
+                           lambda: 0.0)
 
         tf.summary.scalar("accuracy", accuracy)
         tf.summary.scalar("precision", precision)
@@ -193,13 +197,8 @@ class NetworkTrainer(object):
 
         step_update = tf.assign_add(self._global_step, 1)
 
+        # TODO: Use internal epoch handling instead of input pipeline one
         iteration = sess.run(self._global_step)
-
-        operations = [
-            self._op_discriminator,
-            self._op_generator,
-            step_update,
-            self._global_step]
 
         save_model_path = os.path.join(self._training_options.summary_directory, "model.ckpt")
         save_image_path = os.path.join(self._training_options.summary_directory, "images/")
@@ -220,14 +219,19 @@ class NetworkTrainer(object):
             while not coord.should_stop():
                 if iteration % self._training_options.save_model_interval == 0:
                     saver.save(sess, save_model_path, global_step=iteration)
+                    print(f"Saved model from iteration {iteration}")
 
+                # Train discriminator
+                for _ in range(self._training_options.discriminator_iterations):
+                    sess.run(self._op_discriminator)
+
+                # Train generator, optionally output summary
                 if iteration % self._training_options.save_summary_interval == 0:
-                    step_result = sess.run(operations + [summary, concatenated_images])
-                    iteration = step_result[-3]
-                    current_summary = step_result[-2]
+                    _, iteration, current_summary, generated_images = sess.run(
+                        [self._op_generator, step_update, summary, concatenated_images])
+
                     summary_writer.add_summary(current_summary, iteration)
 
-                    generated_images = step_result[-1]
                     # TODO: Don't use hardcoded size
                     # Take first image for output
                     output_image = np.reshape(generated_images[0], (512, 512 * 4, 3))
@@ -236,8 +240,7 @@ class NetworkTrainer(object):
 
                     print(f"Iteration {iteration} done")
                 else:
-                    step_result = sess.run(operations)
-                    iteration = step_result[-1]
+                    _, iteration = sess.run([self._op_generator, step_update])
 
         except tf.errors.OutOfRangeError:
             print("Epoch limit reached, training stopped")
