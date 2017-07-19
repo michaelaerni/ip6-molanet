@@ -25,12 +25,9 @@ def contains_hair(image, line_threshold=10) -> bool:
 
 
 def calculate_mole_sizes(mask: np.ndarray) -> Tuple[float, int]:
-    pixel_sum = np.sum(mask)
-    if (pixel_sum > 0):
-        absolute_size = int(pixel_sum / np.max(mask) / mask.shape[2])
-    else:
-        raise ZeroDivisionError
+    black_pixels = cv2.calcHist([mask], [0], None, [256], [0, 256])[0]
     absolute_height, absolute_width, _ = mask.shape
+    absolute_size = absolute_width * absolute_height - black_pixels
     relative_size = absolute_size / float(absolute_width * absolute_height)
     return relative_size, absolute_size
 

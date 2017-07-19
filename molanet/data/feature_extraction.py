@@ -55,17 +55,11 @@ def extract_features(samples: Iterable[MoleSample],
                     discardedWriter.writerow(sample.uuid)
                     continue
 
-                try:
-                    for features in compute_features(sample):
-                        writer.writerow(features)
-                    if (count % 300 == 0):
-                        print(f"{count}: computed features for {count-offset} samples")
-                except ValueError:
-                    print(f"{count}: ValueError in sample {sample.uuid}")
-                    pass
-                except ZeroDivisionError:
-                    print(f"{count}: ZeroDivisionError in sample {sample.uuid}")
-                    pass
+                for features in compute_features(sample):
+                    writer.writerow(features)
+                if (count % 300 == 0):
+                    print(f"{count}: computed features for {count-offset} samples")
+
 
 
 def count_features(features_csv_path: str, bins=7):
@@ -136,7 +130,7 @@ if __name__ == "__main__":
     parser = create_arg_parser()
     args = parser.parse_args()
 
-    offset = 606
+    offset = 0
     fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size']
     delimiter = ";"
     features_csv_path = f"features_{offset}.csv"
