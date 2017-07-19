@@ -19,10 +19,9 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logdir", type=str, help="Directory into which summaries and checkpoints are written")
     parser.add_argument("--restore", type=int, help="If set, restores the model from logdir with the given iteration")
     parser.add_argument("--debug-placement", action="store_true", help="Output device placement")
-    parser.add_argument("--logsubdir", action="store_true",
-                        help="creates a subdirectory in the Directory logdir into which summaries and checkpoints are written")
-    parser.add_argument("--discriminator-iterations", type=int, default=1,
-                        help="Number of discriminator iterations in training")
+    parser.add_argument("--logsubdir", action="store_true", help="Create a subdirectory in logdir for each new run")
+    parser.add_argument("--discriminator-iterations", type=int, default=1, help="Number of discriminator iterations")
+    parser.add_argument("--l1-lambda", type=int, default=0, help="Generator loss l1 lambda")
 
     return parser
 
@@ -52,7 +51,7 @@ if __name__ == "__main__":
         input_x,
         input_y,
         network_factory,
-        WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=0),
+        WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=args.l1_lambda),
         training_options=TrainingOptions(
             summary_directory=logdir,
             discriminator_iterations=args.discriminator_iterations),
