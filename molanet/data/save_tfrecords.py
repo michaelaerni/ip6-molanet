@@ -1,5 +1,4 @@
 import argparse
-import csv
 import os
 import shutil
 from os import path
@@ -23,7 +22,7 @@ class RecordSaver(object):
                  compression_type: TFRecordCompressionType = TFRecordCompressionType.ZLIB,
                  rescale: bool = False):
 
-        self._root_directory = root_directory
+        self._root_directory = os.path.abspath(root_directory)
         self._target_directory = os.path.abspath(os.path.join(root_directory, data_set))
         self._data_set = data_set
         self._options = TFRecordOptions(compression_type)
@@ -47,10 +46,11 @@ class RecordSaver(object):
             writer.write(example.SerializeToString())
 
     def write_meta_data(self, sample_uuids: List[Tuple[str, str]]):
+        os.makedirs(self._root_directory)
         meta_path = os.path.join(self._root_directory, f"{self._data_set}.txt")
-        with open(meta_path, mode="w", newline="") as f:
-            writer = csv.writer(f, delimiter=";", quoting=csv.QUOTE_MINIMAL)
-            writer.writerows(sample_uuids)
+        with open(meta_path, mode="w") as f:
+            f.write(os.linesep.join(
+                (f"{sample_uuid}_{segmentation_id}" for sample_uuid, segmentation_id in sample_uuids)))
 
     def _generate_sample_path(self, sample: MoleSample, segmentation: Segmentation) -> Tuple[str, str]:
         sample_directory = path.join(self._target_directory, sample.uuid[0:2])
