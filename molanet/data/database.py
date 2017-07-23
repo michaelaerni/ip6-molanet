@@ -49,12 +49,39 @@ class DatabaseConnection(object):
             self._connection.commit()
             return cur.rowcount  # Number of deleted rows
 
-    def get_data_set_samples(self, data_set: str, offset: int = 0, batch_size: int = 20)\
+    def get_data_set_samples(self, data_set: str)\
             -> Iterable[Tuple[MoleSample, List[Segmentation]]]:
-        raise NotImplementedError
+        sample_uuid_query = """SELECT DISTINCT mole_sample_uuid FROM set_entries WHERE set_name = %(set_name)s"""
+        sample_query = """SELECT uuid, data_source, data_set, source_id, name, height, width, diagnosis, image
+                          FROM mole_samples WHERE uuid = %(uuid)s"""
+        segmentations_query = """SELECT segmentations.source_id, segmentations.height, segmentations.width, segmentations.mask
+                                 FROM segmentations
+                                 JOIN set_entries ON (segmentations.source_id = set_entries.segmentation_source_id)
+                                 WHERE set_entries.mole_sample_uuid = %(mole_sample_uuid)s AND set_name = %(set_name)s"""
+
+        with self._connection.cursor() as cur:
+            # Load all sample ids in the set first so we load them only once
+            cur.execute(sample_uuid_query, {"set_name": data_set})
+            uuids = [row[0] for row in cur.fetchall()]
+
+            # Now load every sample and then all corresponding masks in the same data set
+            for uuid in uuids:
+                # Load all segmentations for this sample in the current set
+                cur.execute(segmentations_query, {"mole_sample_uuid": uuid, "set_name": data_set})
+                segmentations = [self._record_to_segmentation(segmentation_record) for segmentation_record in cur]
+
+                # Finally load the actual sample and yield a new result
+                cur.execute(sample_query, {"uuid": uuid})
+                sample = self._record_to_sample(cur.fetchone(), segmentations)
+
+                yield sample, segmentations
 
     def get_data_set_ids(self, data_set: str) -> List[Tuple[str, str]]:
-        raise NotImplementedError
+        query = """SELECT mole_sample_uuid, segmentation_source_id FROM set_entries WHERE set_name = %(set_name)s"""
+
+        with self._connection.cursor() as cur:
+            cur.execute(query, {"set_name": data_set})
+            return cur.fetchall()
 
     def get_samples(self, offset: int = 0, batch_size: int = 20) -> Iterable[MoleSample]:
         if offset < 0:
@@ -75,20 +102,7 @@ class DatabaseConnection(object):
                 for sample_record in cur:
                     uuid = sample_record[0]
                     segmentations = list(self.get_segmentations_for_sample(uuid))
-                    dimensions = (int(sample_record[5]), int(sample_record[6]))
-                    raw_diagnosis = str(sample_record[7])
-                    diagnosis = Diagnosis[raw_diagnosis] if raw_diagnosis in Diagnosis.__members__ else raw_diagnosis
-                    yield MoleSample(
-                        uuid,
-                        data_source=sample_record[1],
-                        data_set=sample_record[2],
-                        source_id=sample_record[3],
-                        name=sample_record[4],
-                        dimensions=dimensions,
-                        diagnosis=diagnosis,
-                        image=np.frombuffer(sample_record[8], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 3]),
-                        segmentations=segmentations
-                    )
+                    yield self._record_to_sample(sample_record, segmentations)
 
     def get_segmentations_for_sample(self, sample_uuid: str) -> Iterable[Segmentation]:
         query = """SELECT source_id, height, width, mask
@@ -99,12 +113,34 @@ class DatabaseConnection(object):
             cur.execute(query, {"sample_uuid": sample_uuid})
 
             for segmentation_record in cur:
-                dimensions = (int(segmentation_record[1]), int(segmentation_record[2]))
-                yield Segmentation(
-                    source_id=segmentation_record[0],
-                    dimensions=dimensions,
-                    mask=np.frombuffer(segmentation_record[3], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 1])
-                )
+                yield self._record_to_segmentation(segmentation_record)
+
+    @staticmethod
+    def _record_to_segmentation(segmentation_record: Tuple) -> Segmentation:
+        dimensions = (int(segmentation_record[1]), int(segmentation_record[2]))
+        return Segmentation(
+            source_id=segmentation_record[0],
+            dimensions=dimensions,
+            mask=np.frombuffer(segmentation_record[3], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 1])
+        )
+
+    @staticmethod
+    def _record_to_sample(sample_record: Tuple, segmentations: List[Segmentation]) -> MoleSample:
+        uuid = sample_record[0]
+        dimensions = (int(sample_record[5]), int(sample_record[6]))
+        raw_diagnosis = str(sample_record[7])
+        diagnosis = Diagnosis[raw_diagnosis] if raw_diagnosis in Diagnosis.__members__ else raw_diagnosis
+        return MoleSample(
+            uuid,
+            data_source=sample_record[1],
+            data_set=sample_record[2],
+            source_id=sample_record[3],
+            name=sample_record[4],
+            dimensions=dimensions,
+            diagnosis=diagnosis,
+            image=np.frombuffer(sample_record[8], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 3]),
+            segmentations=segmentations
+        )
 
     @staticmethod
     def sample_to_dict(sample: MoleSample, include_image: bool = True) -> Dict:

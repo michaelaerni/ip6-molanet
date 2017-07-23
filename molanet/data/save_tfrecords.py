@@ -107,14 +107,13 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--database-password", default=None, help="Target database password")
     parser.add_argument("--database-port", type=int, default=5432, help="Target database port")
 
-    parser.add_argument("--offset", type=int, default=0, help="Starting offset in data set")
     parser.add_argument("--target-directory", type=str, default=None,
                         help="Base directory into which the data sets are exported")
-    parser.add_argument("--rescale", type=bool, action="store_true",
+    parser.add_argument("--rescale", action="store_true",
                         help="Rescale all images to 512x512 pixels. Non-matching aspect ratios are padded.")
-    parser.add_argument("--metadata-only", type=bool, action="store_true",
+    parser.add_argument("--metadata-only", action="store_true",
                         help="Only export the data set lists, no images. Image directories are not touched.")
-    parser.add_argument("data-sets", metavar="SET", type=str, nargs="+", help="One or more data sets to export")
+    parser.add_argument("datasets", metavar="SET", type=str, nargs="+", help="One or more data sets to export")
 
     return parser
 
@@ -130,7 +129,7 @@ if __name__ == "__main__":
             username=args.database_username, password=args.database_password) as db:
 
         # Export each data set individually
-        for data_set in args.data_sets:
+        for data_set in args.datasets:
             print(f"Saving data set {data_set}")
             saver = RecordSaver(args.target_directory, data_set, rescale=args.rescale)
 
@@ -140,9 +139,9 @@ if __name__ == "__main__":
 
                 print(f"Loading tfrecords...")
 
-                sample_count = args.offset
+                sample_count = 0
 
-                for sample, segmentations in db.get_data_set_samples(data_set, offset=args.offset):
+                for sample, segmentations in db.get_data_set_samples(data_set):
                     for segmentation in segmentations:
                         saver.write_sample(sample, segmentation)
                     print(f"[{sample_count}]: Saved {sample.uuid} with {len(segmentations)} segmentations")
@@ -150,6 +149,6 @@ if __name__ == "__main__":
                     sample_count += 1
 
             print(f"Saving meta data file...")
-            saver.write_meta_data(db.get_data_set_uuids(data_set), data_set)
+            saver.write_meta_data(db.get_data_set_ids(data_set))
 
         print("Done")
