@@ -29,8 +29,18 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
         uuids = []
         seg_uuids = []
 
-        for row in reader:
+        # indices for which the image with <uuid> has more than one segmentation
+        multi_seg_indices = []
+
+        lastuuid = ""
+        for idx, row in enumerate(reader):
             nrows += 1
+            uuid = row['uuid']
+
+            if uuid == lastuuid:
+                if len(multi_seg_indices) == 0 or not multi_seg_indices[-1] == idx - 1:
+                    multi_seg_indices.append(idx - 1)
+                multi_seg_indices.append(idx)
 
             seg_uuids.append(row['seg_id'])
             uuids.append(row['uuid'])
@@ -41,13 +51,39 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
             median.append(row['median'])
             rel_size.append(row['rel_size'])
             abs_size.append(row['abs_size'])
+            lastuuid = uuid
 
         print(f"parsed {nrows} rows")
-        return uuids, seg_uuids, hair, plaster, mean, median, stddev, rel_size, abs_size
+        print(f"{len(multi_seg_indices)} masks which do not map to a distinct uuid {multi_seg_indices}")
+
+        single_segmetation_mask = np.ones(len(uuids), np.bool)
+        single_segmetation_mask[multi_seg_indices] = 0
+
+        data_single_mask = (np.array(uuids)[single_segmetation_mask],
+                            np.array(seg_uuids)[single_segmetation_mask],
+                            np.array(hair, dtype=np.bool)[single_segmetation_mask],
+                            np.array(plaster, dtype=np.bool)[single_segmetation_mask],
+                            np.array(mean, np.float32)[single_segmetation_mask],
+                            np.array(median, np.float32)[single_segmetation_mask],
+                            np.array(stddev, np.float32)[single_segmetation_mask],
+                            np.array(rel_size, np.float32)[single_segmetation_mask],
+                            np.array(abs_size, np.float32)[single_segmetation_mask])
+
+        data_multimask = (np.array(uuids)[multi_seg_indices],
+                          np.array(seg_uuids)[multi_seg_indices],
+                          np.array(hair, dtype=np.bool)[multi_seg_indices],
+                          np.array(plaster, dtype=np.bool)[multi_seg_indices],
+                          np.array(mean, np.float32)[multi_seg_indices],
+                          np.array(median, np.float32)[multi_seg_indices],
+                          np.array(stddev, np.float32)[multi_seg_indices],
+                          np.array(rel_size, np.float32)[multi_seg_indices],
+                          np.array(abs_size, np.float32)[multi_seg_indices])
+
+        return data_single_mask, data_multimask
 
 
-def plot_hist(fig, ax, list, bins, title: str = ""):
-    hist, bins = np.histogram(np.array(list, dtype=np.float32), bins=bins, density=False)
+def plot_hist(fig, ax, list: np.ndarray, bins, title: str = ""):
+    hist, bins = np.histogram(list, bins=bins, density=False)
     # print(np.min(hist[np.nonzero(hist)]),np.max(hist))
     width = np.diff(bins)
     center = (bins[:-1] + bins[1:]) / 2
@@ -91,10 +127,11 @@ if __name__ == '__main__':
     path = r"C:\Users\pdcwi\Downloads\features.csv"
     fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size']
     data = read_data(path, fieldnames, ";")
-    uuids, seg_uuids, hair, plaster, mean, median, stddev, rel_size, abs_size = data
+    data_single, data_multimask = data
+    uuids, seg_uuids, hair, plaster, mean, median, stddev, rel_size, abs_size = data_single
 
-    bin_arg = 'doane'
-    bin_arg = 8
+    # bin_arg = 'doane'
+    bin_arg = 5
     individual_bin_args = False
 
     # this could be automated for variable parameter sizes
@@ -110,16 +147,34 @@ if __name__ == '__main__':
 
     bins = bins_mean, bins_stddev, bins_median, bins_bins_rel_size, bins_abs_size
 
+    """
+    TODO stratified cv set creation may be desirable (partitioning so that features are uniformely distributed in cv set)
+
+    https://en.wikipedia.org/wiki/Stratified_sampling
+    https://stats.stackexchange.com/questions/117643/why-use-stratified-cross-validation-why-does-this-not-damage-variance-related-b
+    http://citeseer.ist.psu.edu/viewdoc/summary?doi=10.1.1.186.8880
+
+    "This is particularly useful if the responses are dichotomous 
+    with an unbalanced representation of the two response values in the data."
+
+    In our case creating an equal partitioning is HARD, not only because some stratums contain very vew example but also
+    because a single stratus is defined by a multidimensional feature.
+    A sensible approach is to ensure enough data of each stratum is included in the training phase so that the model can
+    learn the peculiarities associated with
+    """
+
+    # shuffle all array simultaneously by zipping them and shuffling then uzipping later
     seed = random.randrange(sys.maxsize)
+    # seed = 247079226373091163
     print(seed)
     rng = random.Random(seed)
-    combined = list(zip(*data))
+    combined = list(zip(*data_single))
     rng.shuffle(combined)
 
     cv_set_size = int(len(uuids) * 0.15)
     test_set_size = int(len(uuids) * 0.2)
-
-    print(f"training set size={len(uuids)-cv_set_size-test_set_size}")
+    training_set_size = len(uuids) - cv_set_size - test_set_size + data_multimask[0].size
+    print(f"training set size={training_set_size}")
     print(f"cv set size={cv_set_size}")
     print(f"test set size={test_set_size}")
 
@@ -137,10 +192,11 @@ if __name__ == '__main__':
 
     with open(os.path.join(subdirname, "log.txt"), 'w') as log:
         log.write(f"seed={seed}\n")
-        log.write(f"training set size={len(uuids)-cv_set_size-test_set_size}\n")
+        log.write(f"training set size={training_set_size}\n")
         log.write(f"cv set size={cv_set_size}\n")
         log.write(f"test set size={test_set_size}\n")
+        log.write(f"total size={training_set_size+cv_set_size+test_set_size}\n")
 
-        log.write(f"bins\b{bins}")
+        log.write(f"\nbins\n{bins}")
 
     plt.show()
