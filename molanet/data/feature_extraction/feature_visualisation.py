@@ -137,11 +137,11 @@ if __name__ == '__main__':
     # this could be automated for variable parameter sizes
     if type(bin_arg) == str or individual_bin_args:
         # this is REALLY slow
-        _, bins_mean = np.histogram(np.array(mean, dtype=np.float32), bins=bin_arg)
-        _, bins_stddev = np.histogram(np.array(stddev, dtype=np.float32), bins=bin_arg)
-        _, bins_median = np.histogram(np.array(median, dtype=np.float32), bins=bin_arg)
-        _, bins_bins_rel_size = np.histogram(np.array(rel_size, dtype=np.float32), bins=bin_arg)
-        _, bins_abs_size = np.histogram(np.array(abs_size, dtype=np.float32), bins=bin_arg)
+        _, bins_mean = np.histogram(mean, bins=bin_arg)
+        _, bins_stddev = np.histogram(stddev, bins=bin_arg)
+        _, bins_median = np.histogram(median, bins=bin_arg)
+        _, bins_bins_rel_size = np.histogram(rel_size, bins=bin_arg)
+        _, bins_abs_size = np.histogram(abs_size, bins=bin_arg)
     else:
         bins_mean, bins_stddev, bins_median, bins_bins_rel_size, bins_abs_size = bin_arg, bin_arg, bin_arg, bin_arg, bin_arg
 
