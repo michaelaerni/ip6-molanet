@@ -13,17 +13,17 @@ from molanet.data.entities import MoleSample, Diagnosis, Segmentation
 
 def parse_diagnosis(raw_diagnosis: str) -> Union[Diagnosis, str]:
     return {
-        "unknown": Diagnosis.UNKNOWN,
+        None: Diagnosis.UNKNOWN,
         "nevus": Diagnosis.NEVUS,
         "melanoma": Diagnosis.MELANOMA,
         "seborrheic keratosis": Diagnosis.SEBORRHEIC_KERATOSIS
-    }.get(raw_diagnosis, normalize_diagnosis(raw_diagnosis)) # Unmapped diagnoses are normalized and stored as string
+    }.get(raw_diagnosis, normalize_diagnosis(raw_diagnosis))  # Unmapped diagnoses are normalized and stored as string
 
 
 def normalize_diagnosis(diagnosis: str) -> str:
     # Normalized is all uppercase, spaces replaced by underscores
     # This mimics python enum types
-    return diagnosis.upper().replace(" ", "_")
+    return "UNKNOWN" if diagnosis is None else diagnosis.upper().replace(" ", "_")
 
 
 class IsicLoader(object):
@@ -99,7 +99,7 @@ class IsicLoader(object):
                     source_id,
                     friendly_name,
                     (int(metadata["meta"]["acquisition"]["pixelsY"]), int(metadata["meta"]["acquisition"]["pixelsX"])),
-                    parse_diagnosis(metadata["meta"]["clinical"]["diagnosis"]),
+                    parse_diagnosis(metadata["meta"]["clinical"].get("diagnosis")),
                     image_values,
                     segmentations
                 )
