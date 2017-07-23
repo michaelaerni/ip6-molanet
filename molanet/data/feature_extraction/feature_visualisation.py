@@ -54,7 +54,7 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
             lastuuid = uuid
 
         print(f"parsed {nrows} rows")
-        print(f"{len(multi_seg_indices)} masks which do not map to a distinct uuid {multi_seg_indices}")
+        print(f"{len(multi_seg_indices)} masks which do not map to a distinct uuid")
 
         single_segmetation_mask = np.ones(len(uuids), np.bool)
         single_segmetation_mask[multi_seg_indices] = 0
@@ -181,7 +181,7 @@ if __name__ == '__main__':
     test_set = combined[0:test_set_size]
     cv_set = combined[test_set_size:test_set_size + cv_set_size]
     training_set = combined[test_set_size + cv_set_size:]
-
+    training_set += list(zip(*data_multimask))
     now = datetime.now()
     subdirname = f"split_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}"
     if not os.path.isdir(subdirname): os.mkdir(subdirname)
