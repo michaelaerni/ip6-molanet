@@ -1,6 +1,7 @@
-import psycopg2
-import numpy as np
 from typing import Dict, Iterable
+
+import numpy as np
+import psycopg2
 
 from molanet.data.entities import *
 
@@ -23,11 +24,11 @@ class DatabaseConnection(object):
         self._connection.close()
 
     def insert(self, sample: MoleSample) -> None:
-        sample_query = "INSERT INTO mole_samples (uuid, data_source, data_set, source_id, name, height, width, diagnosis, use_case, image) " \
-            "VALUES (%(uuid)s, %(data_source)s, %(data_set)s, %(source_id)s, %(name)s, %(height)s, %(width)s, %(diagnosis)s, %(use_case)s, %(image)s)"
+        sample_query = "INSERT INTO mole_samples (uuid, data_source, data_set, source_id, name, height, width, diagnosis, image) " \
+            "VALUES (%(uuid)s, %(data_source)s, %(data_set)s, %(source_id)s, %(name)s, %(height)s, %(width)s, %(diagnosis)s, %(image)s)"
 
-        segmentation_query = "INSERT INTO segmentations (mole_sample_uuid, source_id, height, width, skill_level, use_case, mask) " \
-            "VALUES (%(mole_sample_uuid)s, %(source_id)s, %(height)s, %(width)s, %(skill_level)s, %(use_case)s, %(mask)s)"
+        segmentation_query = "INSERT INTO segmentations (mole_sample_uuid, source_id, height, width, mask) " \
+            "VALUES (%(mole_sample_uuid)s, %(source_id)s, %(height)s, %(width)s, %(mask)s)"
 
         with self._connection.cursor() as cur:
             # Insert sample
@@ -52,7 +53,7 @@ class DatabaseConnection(object):
         if offset < 0:
             raise ValueError("offset must be >= 0")
 
-        sample_query = """SELECT uuid, data_source, data_set, source_id, name, height, width, diagnosis, use_case, image
+        sample_query = """SELECT uuid, data_source, data_set, source_id, name, height, width, diagnosis, image
         FROM mole_samples LIMIT %(batch_size)s OFFSET %(offset_count)s"""
 
         with self._connection.cursor() as cur:
@@ -68,6 +69,8 @@ class DatabaseConnection(object):
                     uuid = sample_record[0]
                     segmentations = list(self.get_segmentations_for_sample(uuid))
                     dimensions = (int(sample_record[5]), int(sample_record[6]))
+                    raw_diagnosis = str(sample_record[7])
+                    diagnosis = Diagnosis[raw_diagnosis] if raw_diagnosis in Diagnosis.__members__ else raw_diagnosis
                     yield MoleSample(
                         uuid,
                         data_source=sample_record[1],
@@ -75,14 +78,13 @@ class DatabaseConnection(object):
                         source_id=sample_record[3],
                         name=sample_record[4],
                         dimensions=dimensions,
-                        diagnosis=Diagnosis[sample_record[7]],
-                        use_case=UseCase[sample_record[8]],
-                        image=np.frombuffer(sample_record[9], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 3]),
+                        diagnosis=diagnosis,
+                        image=np.frombuffer(sample_record[8], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 3]),
                         segmentations=segmentations
                     )
 
     def get_segmentations_for_sample(self, sample_uuid: str) -> Iterable[Segmentation]:
-        query = """SELECT source_id, height, width, skill_level, use_case, mask
+        query = """SELECT source_id, height, width, mask
         FROM segmentations
         WHERE mole_sample_uuid = %(sample_uuid)s"""
 
@@ -94,9 +96,7 @@ class DatabaseConnection(object):
                 yield Segmentation(
                     source_id=segmentation_record[0],
                     dimensions=dimensions,
-                    skill_level=SkillLevel[segmentation_record[3]],
-                    use_case=UseCase[segmentation_record[4]],
-                    mask=np.frombuffer(segmentation_record[5], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 1])
+                    mask=np.frombuffer(segmentation_record[3], dtype=np.uint8).reshape([dimensions[0], dimensions[1], 1])
                 )
 
     @staticmethod
@@ -109,8 +109,7 @@ class DatabaseConnection(object):
             "name": sample.name,
             "height": sample.dimensions[0],
             "width": sample.dimensions[1],
-            "diagnosis": sample.diagnosis.name,
-            "use_case": sample.use_case.name
+            "diagnosis": sample.diagnosis.name if isinstance(sample.diagnosis, Enum) else str(sample.diagnosis)
         }
 
         if include_image:
@@ -124,9 +123,7 @@ class DatabaseConnection(object):
             "mole_sample_uuid": sample_uuid,
             "source_id": segmentation.source_id,
             "height": segmentation.dimensions[0],
-            "width": segmentation.dimensions[1],
-            "skill_level": segmentation.skill_level.name,
-            "use_case": segmentation.use_case.name
+            "width": segmentation.dimensions[1]
         }
 
         if include_image:

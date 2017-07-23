@@ -8,7 +8,6 @@ import tensorflow as tf
 from PIL import Image
 from tensorflow.python.lib.io.tf_record import TFRecordCompressionType, TFRecordWriter, TFRecordOptions
 
-from molanet.data.database import DatabaseConnection
 from molanet.data.entities import MoleSample, UseCase
 
 
@@ -19,6 +18,7 @@ class Resize(Enum):
 class RecordSaver(object):
     def __init__(self, rootdir: str, compressiontype: TFRecordCompressionType = TFRecordCompressionType.ZLIB,
                  log_saved_uuids=True, resize: Resize = Resize.SCALE):
+        raise NotImplementedError("This needs to be rewritten to not dump all data sets and use the new database structure")
         self.rootdir = rootdir
         self.options = TFRecordOptions(compressiontype)
         self.log_saved_uuids = log_saved_uuids
@@ -89,7 +89,7 @@ class RecordSaver(object):
         with open(self.get_logfile(sample.use_case), "a") as logfile:
             logfile.write(f"{sample.uuid}\n")
 
-    def writeSample(self, sample: MoleSample) -> bool:
+    def write_sample(self, sample: MoleSample) -> bool:
         if len(sample.segmentations) == 0: return False
 
         file = self.get_or_make_filename(sample)
@@ -127,6 +127,8 @@ def create_arg_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == "__main__":
+    raise NotImplementedError("This needs to be rewritten to not dump all data sets and use the new database structure")
+
     # Parse arguments
     parser = create_arg_parser()
     args = parser.parse_args()
@@ -137,7 +139,7 @@ if __name__ == "__main__":
                             password=args.database_password) as db:
         sample_count = args.offset
         for sample in db.get_samples(args.offset, args.batch_size):
-            if saver.writeSample(sample):
+            if saver.write_sample(sample):
                 print(f"[{sample_count}]: saved {sample.uuid}")
             else:
                 print(f"[{sample_count}]: failed to save {sample.uuid}")
