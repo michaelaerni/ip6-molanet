@@ -19,7 +19,7 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
         reader = csv.DictReader(csvfile, delimiter=delimiter)
         print(reader.fieldnames)
         nrows = 0
-        plasters = []
+        plaster = []
         hair = []
         mean = []
         stddev = []
@@ -34,7 +34,7 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
 
             seg_uuids.append(row['seg_id'])
             uuids.append(row['uuid'])
-            plasters.append(1 if row['plaster'] == 'True' else 0)
+            plaster.append(1 if row['plaster'] == 'True' else 0)
             hair.append(1 if row['hair'] == 'True' else 0)
             mean.append(row['mean'])
             stddev.append(row['stddev'])
@@ -43,27 +43,30 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
             abs_size.append(row['abs_size'])
 
         print(f"parsed {nrows} rows")
-        return uuids, seg_uuids, plasters, hair, mean, stddev, median, rel_size, abs_size
+        return uuids, seg_uuids, hair, plaster, mean, median, stddev, rel_size, abs_size
 
 
 def create_split_indices(size: int) -> np.ndarray:
     return np.random.permutation(size)
 
 
-def count_features(data, logdir: str, bins=7, setname: str = "unpsecified"):
-    uuids, seg_uuids, plasters, hair, mean, stddev, median, rel_size, abs_size = data
+def plot_hist(fig, ax, list, bins=7, title: str = ""):
+    hist, bins = np.histogram(np.array(list, dtype=np.float32), bins=bins)
+    width = np.diff(bins)
+    center = (bins[:-1] + bins[1:]) / 2
+
+    ax.bar(center, hist, align='center', width=width)
+    ax.set_xticks(bins)
+    ax.set_title(title)
+
+
+def count_features(data, logdir: str, bins=(5, 5, 5, 5, 5), setname: str = "unpsecified"):
+    uuids, seg_uuids, hair, plaster, mean, median, stddev, rel_size, abs_size = data
+    bins_mean, bins_stddev, bins_median, bins_bins_rel_size, bins_abs_size = bins
+
     size = len(seg_uuids)
 
-    def plot_hist(fig, ax, list, bins=bins, title: str = ""):
-        hist, bins = np.histogram(np.array(list, dtype=np.float32), bins=bins)
-        width = np.diff(bins)
-        center = (bins[:-1] + bins[1:]) / 2
-
-        ax.bar(center, hist, align='center', width=width)
-        ax.set_xticks(bins)
-        ax.set_title(title)
-
-    nplasters = sum(plasters)
+    nplasters = sum(plaster)
     nhair = sum(hair)
     print(f"{setname}_plasters: {nplasters/size*100}% or {nplasters}")
     print(f"{setname}_hair: {nhair/size*100}% or {nhair}")
@@ -72,11 +75,11 @@ def count_features(data, logdir: str, bins=7, setname: str = "unpsecified"):
     fig.canvas.set_window_title(setname)
     fig.suptitle(setname, fontsize=12)
 
-    plot_hist(fig, ax[0], stddev, title=setname + '_stddev')
-    plot_hist(fig, ax[1], median, title=setname + '_median')
-    plot_hist(fig, ax[2], mean, title=setname + '_mean')
-    plot_hist(fig, ax[3], rel_size, title=setname + '_rel_size')
-    plot_hist(fig, ax[4], abs_size, title=setname + '_abs_size')
+    plot_hist(fig, ax[0], stddev, title=setname + '_stddev', bins=bins_stddev)
+    plot_hist(fig, ax[1], median, title=setname + '_median', bins=bins_median)
+    plot_hist(fig, ax[2], mean, title=setname + '_mean', bins=bins_mean)
+    plot_hist(fig, ax[3], rel_size, title=setname + '_rel_size', bins=bins_bins_rel_size)
+    plot_hist(fig, ax[4], abs_size, title=setname + '_abs_size', bins=bins_abs_size)
 
     fig.savefig(os.path.join(logdir, f"{setname}_set.png"), bbox_inches='tight', papertype="a4")
 
@@ -91,7 +94,24 @@ if __name__ == '__main__':
     path = r"C:\Users\pdcwi\Downloads\features.csv"
     fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size']
     data = read_data(path, fieldnames, ";")
-    uuids, seg_uuids, plasters, hair, mean, stddev, median, rel_size, abs_size = data
+    uuids, seg_uuids, hair, plaster, mean, median, stddev, rel_size, abs_size = data
+
+    bin_arg = 'auto'
+    # bin_arg = 5
+    individual_bin_args = False
+
+    # this could be automated for variable parameter sizes
+    if type(bin_arg) == str or individual_bin_args:
+        # this is REALLY slow
+        _, bins_mean = np.histogram(np.array(mean, dtype=np.float32), bins=bin_arg)
+        _, bins_stddev = np.histogram(np.array(stddev, dtype=np.float32), bins=bin_arg)
+        _, bins_median = np.histogram(np.array(median, dtype=np.float32), bins=bin_arg)
+        _, bins_bins_rel_size = np.histogram(np.array(rel_size, dtype=np.float32), bins=bin_arg)
+        _, bins_abs_size = np.histogram(np.array(abs_size, dtype=np.float32), bins=bin_arg)
+    else:
+        bins_mean, bins_stddev, bins_median, bins_bins_rel_size, bins_abs_size = bin_arg, bin_arg, bin_arg, bin_arg, bin_arg
+
+    bins = bins_mean, bins_stddev, bins_median, bins_bins_rel_size, bins_abs_size
 
     seed = random.randrange(sys.maxsize)
     print(seed)
@@ -114,8 +134,8 @@ if __name__ == '__main__':
     subdirname = f"split_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}"
     if not os.path.isdir(subdirname): os.mkdir(subdirname)
 
-    count_features(zip(*training_set), subdirname, setname="training")
-    count_features(zip(*cv_set), subdirname, setname="cv")
-    count_features(zip(*test_set), subdirname, setname="test")
+    count_features(zip(*training_set), subdirname, setname="training", bins=bins)
+    count_features(zip(*cv_set), subdirname, setname="cv", bins=bins)
+    count_features(zip(*test_set), subdirname, setname="test", bins=bins)
 
     plt.show()
