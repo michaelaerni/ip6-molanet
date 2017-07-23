@@ -1,4 +1,4 @@
-from typing import Dict, Iterable
+from typing import Dict, Iterable, Tuple, List
 
 import numpy as np
 import psycopg2
@@ -49,7 +49,14 @@ class DatabaseConnection(object):
             self._connection.commit()
             return cur.rowcount  # Number of deleted rows
 
-    def get_samples(self, offset=0, batch_size=20) -> Iterable[MoleSample]:
+    def get_data_set_samples(self, data_set: str, offset: int = 0, batch_size: int = 20)\
+            -> Iterable[Tuple[MoleSample, List[Segmentation]]]:
+        raise NotImplementedError
+
+    def get_data_set_ids(self, data_set: str) -> List[Tuple[str, str]]:
+        raise NotImplementedError
+
+    def get_samples(self, offset: int = 0, batch_size: int = 20) -> Iterable[MoleSample]:
         if offset < 0:
             raise ValueError("offset must be >= 0")
 
