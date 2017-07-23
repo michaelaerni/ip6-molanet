@@ -46,12 +46,9 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
         return uuids, seg_uuids, hair, plaster, mean, median, stddev, rel_size, abs_size
 
 
-def create_split_indices(size: int) -> np.ndarray:
-    return np.random.permutation(size)
-
-
-def plot_hist(fig, ax, list, bins=7, title: str = ""):
-    hist, bins = np.histogram(np.array(list, dtype=np.float32), bins=bins)
+def plot_hist(fig, ax, list, bins, title: str = ""):
+    hist, bins = np.histogram(np.array(list, dtype=np.float32), bins=bins, density=False)
+    # print(np.min(hist[np.nonzero(hist)]),np.max(hist))
     width = np.diff(bins)
     center = (bins[:-1] + bins[1:]) / 2
 
@@ -96,8 +93,8 @@ if __name__ == '__main__':
     data = read_data(path, fieldnames, ";")
     uuids, seg_uuids, hair, plaster, mean, median, stddev, rel_size, abs_size = data
 
-    bin_arg = 'auto'
-    # bin_arg = 5
+    bin_arg = 'doane'
+    bin_arg = 8
     individual_bin_args = False
 
     # this could be automated for variable parameter sizes
@@ -137,5 +134,13 @@ if __name__ == '__main__':
     count_features(zip(*training_set), subdirname, setname="training", bins=bins)
     count_features(zip(*cv_set), subdirname, setname="cv", bins=bins)
     count_features(zip(*test_set), subdirname, setname="test", bins=bins)
+
+    with open(os.path.join(subdirname, "log.txt"), 'w') as log:
+        log.write(f"seed={seed}\n")
+        log.write(f"training set size={len(uuids)-cv_set_size-test_set_size}\n")
+        log.write(f"cv set size={cv_set_size}\n")
+        log.write(f"test set size={test_set_size}\n")
+
+        log.write(f"bins\b{bins}")
 
     plt.show()
