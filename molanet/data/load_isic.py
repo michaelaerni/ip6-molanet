@@ -1,28 +1,29 @@
 import argparse
 import io
 import uuid
-from typing import Iterable
+from typing import Iterable, Union
 
 import numpy as np
 import requests
 from PIL import Image
 
 from molanet.data.database import DatabaseConnection
-from molanet.data.entities import MoleSample, Diagnosis, Segmentation, SkillLevel
+from molanet.data.entities import MoleSample, Diagnosis, Segmentation
 
 
-def parse_diagnosis(raw_diagnosis: str) -> Diagnosis:
+def parse_diagnosis(raw_diagnosis: str) -> Union[Diagnosis, str]:
     return {
-        "benign": Diagnosis.BENIGN,
-        "malignant": Diagnosis.MALIGNANT
-    }.get(raw_diagnosis, Diagnosis.UNKNOWN)  # indeterminate/* or unknown are stored as unknown (not relevant)
+        "unknown": Diagnosis.UNKNOWN,
+        "nevus": Diagnosis.NEVUS,
+        "melanoma": Diagnosis.MELANOMA,
+        "seborrheic keratosis": Diagnosis.SEBORRHEIC_KERATOSIS
+    }.get(raw_diagnosis, normalize_diagnosis(raw_diagnosis)) # Unmapped diagnoses are normalized and stored as string
 
 
-def parse_skill_level(raw_level : str) -> SkillLevel:
-    return {
-        "expert": SkillLevel.EXPERT,
-        "novice": SkillLevel.NOVICE
-    }.get(raw_level, SkillLevel.UNKNOWN)
+def normalize_diagnosis(diagnosis: str) -> str:
+    # Normalized is all uppercase, spaces replaced by underscores
+    # This mimics python enum types
+    return diagnosis.upper().replace(" ", "_")
 
 
 class IsicLoader(object):
@@ -65,7 +66,6 @@ class IsicLoader(object):
                     yield Segmentation(
                         segmentation_id,
                         mask,
-                        parse_skill_level(current_segmentation["skill"]),
                         (mask.shape[0], mask.shape[1])
                     )
 
@@ -93,13 +93,13 @@ class IsicLoader(object):
 
                 # Create new sample
                 yield MoleSample(
-                    self.create_uuid(source_id),
+                    self.create_uuid(),
                     self._data_source,
                     metadata["dataset"]["name"],
                     source_id,
                     friendly_name,
                     (int(metadata["meta"]["acquisition"]["pixelsY"]), int(metadata["meta"]["acquisition"]["pixelsX"])),
-                    parse_diagnosis(metadata["meta"]["clinical"]["benign_malignant"]),
+                    parse_diagnosis(metadata["meta"]["clinical"]["diagnosis"]),
                     image_values,
                     segmentations
                 )
@@ -135,7 +135,11 @@ if __name__ == "__main__":
     data_source = args.data_source_name
     loader = IsicLoader(args.api_url, data_source, args.fetch_batch_size)
 
-    with DatabaseConnection(args.database_host, args.database, username=args.database_username, password=args.database_password) as db:
+    with DatabaseConnection(
+            args.database_host, args.database, username=args.database_username, password=args.database_password) as db:
+
+        # TODO: Allow update instead of re-insert (keep uuid)
+
         if args.offset == 0:
             removed_count = db.clear_data(data_source)
             print(f"Cleared data set, deleted {removed_count} rows")
