@@ -85,7 +85,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
                         help="Name of the data source stored in the database")
     parser.add_argument("--lesion-list", type=str, default="lesionlist.txt",
                         help="Name of the file containing the lesion meta data")
-    parser.add_argument("--root-directory", type=str, default=None,
+    parser.add_argument("--root-directory", type=str,
                         help="Root directory containing the lesion list file and extracted images")
     parser.add_argument("--offset", type=int, default=0, help="Starting offset in data set")
 
