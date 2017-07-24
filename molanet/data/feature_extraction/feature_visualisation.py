@@ -7,6 +7,8 @@ from datetime import datetime
 import numpy as np
 from matplotlib import pyplot as plt
 
+from molanet.data.entities import Diagnosis
+
 
 def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
     seg_uuid_map = {}
@@ -28,14 +30,29 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
         abs_size = []
         uuids = []
         seg_uuids = []
+        diagnosiseseses = []
 
         # indices for which the image with <uuid> has more than one segmentation
         multi_seg_indices = []
 
+        # only count rows with a diagnosis that we actually care about
+        discarded_diagnosis = {}
+        discard_diagnosis_indices = []
+
         lastuuid = ""
+        diagnosis_names = [e.name for e in Diagnosis]
+
         for idx, row in enumerate(reader):
             nrows += 1
             uuid = row['uuid']
+            diagnosis = row['diagnosis']
+
+            if diagnosis not in diagnosis_names:
+                if diagnosis in discarded_diagnosis:
+                    discarded_diagnosis[diagnosis].append(uuid)
+                else:
+                    discarded_diagnosis[diagnosis] = [uuid]
+                discard_diagnosis_indices.append(idx)
 
             if uuid == lastuuid:
                 if len(multi_seg_indices) == 0 or not multi_seg_indices[-1] == idx - 1:
@@ -51,13 +68,22 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
             median.append(row['median'])
             rel_size.append(row['rel_size'])
             abs_size.append(row['abs_size'])
+            diagnosiseseses.append(diagnosis)
             lastuuid = uuid
 
         print(f"parsed {nrows} rows")
         print(f"{len(multi_seg_indices)} masks which do not map to a distinct uuid")
+        print(
+            f"discarded {sum([len(list) for list in discarded_diagnosis])} masks because of diagnosis.\n{discarded_diagnosis}")
 
-        single_segmetation_mask = np.ones(len(uuids), np.bool)
-        single_segmetation_mask[multi_seg_indices] = 0
+        mask_indices = np.unique(multi_seg_indices + discard_diagnosis_indices)
+
+        single_segmetation_mask = np.ones(len(seg_uuids), np.bool)
+        single_segmetation_mask[mask_indices] = 0
+
+        multi_segmentation_mask = np.zeros(len(seg_uuids), np.bool)
+        multi_segmentation_mask[multi_seg_indices] = 1
+        multi_segmentation_mask[discard_diagnosis_indices] = 0
 
         data_single_mask = (np.array(uuids)[single_segmetation_mask],
                             np.array(seg_uuids)[single_segmetation_mask],
@@ -69,15 +95,15 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
                             np.array(rel_size, np.float32)[single_segmetation_mask],
                             np.array(abs_size, np.float32)[single_segmetation_mask])
 
-        data_multimask = (np.array(uuids)[multi_seg_indices],
-                          np.array(seg_uuids)[multi_seg_indices],
-                          np.array(hair, dtype=np.uint8)[multi_seg_indices],
-                          np.array(plaster, dtype=np.uint8)[multi_seg_indices],
-                          np.array(mean, np.float32)[multi_seg_indices],
-                          np.array(median, np.float32)[multi_seg_indices],
-                          np.array(stddev, np.float32)[multi_seg_indices],
-                          np.array(rel_size, np.float32)[multi_seg_indices],
-                          np.array(abs_size, np.float32)[multi_seg_indices])
+        data_multimask = (np.array(uuids)[multi_segmentation_mask],
+                          np.array(seg_uuids)[multi_segmentation_mask],
+                          np.array(hair, dtype=np.uint8)[multi_segmentation_mask],
+                          np.array(plaster, dtype=np.uint8)[multi_segmentation_mask],
+                          np.array(mean, np.float32)[multi_segmentation_mask],
+                          np.array(median, np.float32)[multi_segmentation_mask],
+                          np.array(stddev, np.float32)[multi_segmentation_mask],
+                          np.array(rel_size, np.float32)[multi_segmentation_mask],
+                          np.array(abs_size, np.float32)[multi_segmentation_mask])
 
         return data_single_mask, data_multimask
 
@@ -98,6 +124,8 @@ def count_features(data, featurenames: [str],
                    setname: str = "unpsecified",
                    front_str_cols: int = 2,
                    plot: bool = False):
+    if (len(data) == 0): return
+
     fig, ax = None, None
     if (plot):
         fig, ax = plt.subplots(len(data) - front_str_cols)
@@ -105,7 +133,7 @@ def count_features(data, featurenames: [str],
         fig.suptitle(setname, fontsize=12)
 
     for idx, feature in enumerate(data):
-        if (idx < front_str_cols or type(feature[0]) == np.str_): continue
+        if (idx < front_str_cols): continue
         hist, hist_bins = np.histogram(feature, bins=bins[idx - front_str_cols], density=False)
 
         # check histogram for missing values
@@ -125,30 +153,23 @@ def count_features(data, featurenames: [str],
 
 if __name__ == '__main__':
     path = r"C:\Users\pdcwi\Downloads\features.csv"
-    fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size']
+    fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size', 'diagnosis']
     data = read_data(path, fieldnames, ";")
     data_single, data_multimask = data
-    do_plot = False
-
-    # my_data = np.genfromtxt(path,
-    #                        dtype=None,
-    #                        delimiter=';',
-    #                        skip_header=1,
-    #                        converters={0: lambda s: s.decode("utf-8")#,
-    #                                    1: lambda s: s.decode("utf-8"),
-    #                                    2: lambda s: 1 if s.decode("utf-8") == 'True' else 0,
-    #                                    3: lambda s: 1 if s.decode("utf-8") == 'True' else 0})
-    # print(my_data)
+    do_plot = True
+    log_directory = ''
+    bin_arg = 'auto'
+    test_set_rel_size = 0.2
+    cv_set_rel_size = 0.15
 
     # bin_arg = 'doane'
-    bin_arg = 'auto'
     individual_bin_args = False
     bins = []
     # this could be automated for variable parameter sizes
     if type(bin_arg) == str or individual_bin_args:
         # precalculate hist bins on entire dataset
         for idx, feature in enumerate(data_single):
-            if (idx < 2 or type(feature[0]) == np.str_): continue
+            if idx < 2: continue
             _, bin_calc = np.histogram(feature, bins=bin_arg)
             bins.append(bin_calc)
     else:
@@ -179,20 +200,21 @@ if __name__ == '__main__':
     combined = list(zip(*data_single))
     rng.shuffle(combined)
 
-    cv_set_size = int(len(data_single[0]) * 0.15)
-    test_set_size = int(len(data_single[0]) * 0.2)
+    cv_set_size = int(len(data_single[0]) * cv_set_rel_size)
+    test_set_size = int(len(data_single[0]) * test_set_rel_size)
     training_set_size = len(data_single[0]) - cv_set_size - test_set_size + data_multimask[0].size
-    print(f"training set size={training_set_size}")
-    print(f"cv set size={cv_set_size}")
-    print(f"test set size={test_set_size}")
 
     test_set = combined[0:test_set_size]
     cv_set = combined[test_set_size:test_set_size + cv_set_size]
     training_set = combined[test_set_size + cv_set_size:]
     training_set += list(zip(*data_multimask))
 
+    print(f"training set size={len(training_set)}")
+    print(f"cv set size={len(cv_set)}")
+    print(f"test set size={len(test_set)}")
+
     now = datetime.now()
-    subdirname = f"split_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}"
+    subdirname = os.path.join(log_directory, f"split_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}")
     if not os.path.isdir(subdirname): os.mkdir(subdirname)
 
     count_features(list(zip(*training_set)), fieldnames, subdirname, setname="training", bins=bins, plot=do_plot)
@@ -201,10 +223,10 @@ if __name__ == '__main__':
 
     with open(os.path.join(subdirname, "log.txt"), 'w') as log:
         log.write(f"seed={seed}\n")
-        log.write(f"training set size={training_set_size}\n")
-        log.write(f"cv set size={cv_set_size}\n")
-        log.write(f"test set size={test_set_size}\n")
-        log.write(f"total size={training_set_size+cv_set_size+test_set_size}\n")
+        log.write(f"training set size={len(training_set)}\n")
+        log.write(f"cv set size={len(cv_set)}\n")
+        log.write(f"test set size={len(test_set)}\n")
+        log.write(f"total size={len(training_set)+len(cv_set)+len(test_set)}\n")
 
         log.write(f"\nbins\n{bins}")
 
