@@ -141,7 +141,7 @@ def count_features(data, featurenames: [str],
         if (plot):
             plot_hist(ax[idx - front_str_cols], hist, hist_bins, title=f"{setname}_{featurenames[idx]}")
 
-    if not subdirname == None:
+    if logdir is not None:
         if (plot):
             fig.savefig(os.path.join(logdir, f"{setname}_set.png"), bbox_inches='tight', papertype="a4")
 
