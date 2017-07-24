@@ -123,8 +123,8 @@ class NetworkTrainer(object):
 
     def __init__(
             self,
-            x: tf.Tensor,
-            y: tf.Tensor,
+            training_data: Tuple[tf.Tensor, tf.Tensor],
+            cv_data: Tuple[tf.Tensor, tf.Tensor, int],
             network_factory: NetworkFactory,
             objective_factory: ObjectiveFactory,
             training_options: TrainingOptions,
@@ -133,19 +133,19 @@ class NetworkTrainer(object):
             beta2: float = 0.999):
         self._training_options = training_options
 
-        self._x = x
-        self._y = y
+        self._train_x, self._train_y = training_data
+        self._cv_x, self._cv_y, self._cv_sample_count = cv_data
 
         # Create networks
-        self._generator = network_factory.create_generator(x)
-        self._discriminator_generated = network_factory.create_discriminator(x, self._generator)
-        self._discriminator_real = network_factory.create_discriminator(x, y, reuse=True)
+        self._generator = network_factory.create_generator(self._train_x)
+        self._discriminator_generated = network_factory.create_discriminator(self._train_x, self._generator)
+        self._discriminator_real = network_factory.create_discriminator(self._train_x, self._train_y, reuse=True)
 
         # Create losses
         self._generator_loss = objective_factory.create_generator_loss(
-            x, y, self._generator, self._discriminator_generated)
+            self._train_x, self._train_y, self._generator, self._discriminator_generated)
         self._discriminator_loss = objective_factory.create_discriminator_loss(
-            x, y, self._generator, self._discriminator_generated, self._discriminator_real)
+            self._train_x, self._train_y, self._generator, self._discriminator_generated, self._discriminator_real)
 
         # Create optimizers
         trainable_variables = tf.trainable_variables()
@@ -159,29 +159,13 @@ class NetworkTrainer(object):
         self._op_discriminator = self._optimizer_discriminator.minimize(self._discriminator_loss, var_list=variables_discriminator)
 
         # Iteration counter
-        self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.int32)
+        self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.int64)
 
     def train(self, sess: tf.Session):
         # TODO: Remove prints everywhere
 
         # Create summaries
-        generated_classes = tf.round((self._generator + 1.0) / 2.0)
-        real_classes = (self._y + 1.0) / 2.0
-        generated_positives = tf.reduce_sum(generated_classes)
-        real_positives = tf.reduce_sum(real_classes)
-
-        accuracy = tf.reduce_mean(tf.cast(tf.equal(generated_classes, real_classes), dtype=tf.float32))
-        true_positives = tf.reduce_sum(tf.cast(
-            tf.logical_and(
-                tf.equal(real_classes, tf.ones_like(real_classes)),
-                tf.equal(generated_classes, real_classes)),
-            dtype=tf.float32))
-        # TODO: Zero handling in precision, recall and f1 are a bit wonky, discuss and fix this
-        precision = tf.cond(generated_positives > 0, lambda: true_positives / generated_positives, lambda: 1.0)
-        recall = tf.cond(real_positives > 0, lambda: true_positives / real_positives, lambda: 1.0)
-        f1_score = tf.cond(tf.logical_and(precision > 0, recall > 0),
-                           lambda: 2.0 * precision * recall / (precision + recall),
-                           lambda: 0.0)
+        accuracy, precision, recall, f1_score = self._create_summaries()
 
         tf.summary.scalar("accuracy", accuracy)
         tf.summary.scalar("precision", precision)
@@ -189,7 +173,7 @@ class NetworkTrainer(object):
         tf.summary.scalar("f1_score", f1_score)
 
         # TODO: Better summary handling
-        summary = tf.summary.merge_all()
+        train_summary = tf.summary.merge_all()
 
         # Start input enqueue threads.
         coord = tf.train.Coordinator()
@@ -207,10 +191,10 @@ class NetworkTrainer(object):
             os.makedirs(save_image_path)
 
         concatenated_images = tf.cast(tf.round(tf.concat([
-            (self._x + 1.0) / 2.0 * 255.0,
-            tf.tile((self._y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+            (self._train_x + 1.0) / 2.0 * 255.0,
+            tf.tile((self._train_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
             tf.tile((self._generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-            tf.tile(tf.abs(tf.subtract(self._generator, self._y)), multiples=[1, 1, 1, 3]) * 255.0
+            tf.tile(tf.abs(tf.subtract(self._generator, self._train_y)), multiples=[1, 1, 1, 3]) * 255.0
         ], axis=2)), dtype=tf.uint8)
 
         saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
@@ -228,7 +212,7 @@ class NetworkTrainer(object):
                 # Train generator, optionally output summary
                 if iteration % self._training_options.save_summary_interval == 0:
                     _, iteration, current_summary, generated_images = sess.run(
-                        [self._op_generator, step_update, summary, concatenated_images])
+                        [self._op_generator, step_update, train_summary, concatenated_images])
 
                     summary_writer.add_summary(current_summary, iteration)
 
@@ -256,3 +240,24 @@ class NetworkTrainer(object):
     def restore(self, sess, restore):
         saver = tf.train.Saver()
         saver.restore(sess, os.path.join(self._training_options.summary_directory, f"model.ckpt-{restore}"))
+
+    def _create_summaries(self) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+        generated_classes = tf.round((self._generator + 1.0) / 2.0)
+        real_classes = (self._train_y + 1.0) / 2.0
+        generated_positives = tf.reduce_sum(generated_classes)
+        real_positives = tf.reduce_sum(real_classes)
+
+        accuracy = tf.reduce_mean(tf.cast(tf.equal(generated_classes, real_classes), dtype=tf.float32))
+        true_positives = tf.reduce_sum(tf.cast(
+            tf.logical_and(
+                tf.equal(real_classes, tf.ones_like(real_classes)),
+                tf.equal(generated_classes, real_classes)),
+            dtype=tf.float32))
+        # TODO: Zero handling in precision, recall and f1 are a bit wonky, discuss and fix this
+        precision = tf.cond(generated_positives > 0, lambda: true_positives / generated_positives, lambda: 1.0)
+        recall = tf.cond(real_positives > 0, lambda: true_positives / real_positives, lambda: 1.0)
+        f1_score = tf.cond(tf.logical_and(precision > 0, recall > 0),
+                           lambda: 2.0 * precision * recall / (precision + recall),
+                           lambda: 0.0)
+
+        return accuracy, precision, recall, f1_score
