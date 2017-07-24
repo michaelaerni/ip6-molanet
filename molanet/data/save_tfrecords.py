@@ -13,10 +13,6 @@ from molanet.data.database import DatabaseConnection
 from molanet.data.entities import MoleSample, Segmentation
 
 
-class NoSegmentationsError(Exception):
-    pass
-
-
 class RecordSaver(object):
     def __init__(self, root_directory: str, data_set: str,
                  compression_type: TFRecordCompressionType = TFRecordCompressionType.ZLIB,
