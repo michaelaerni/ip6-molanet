@@ -60,7 +60,7 @@ def read_data(features_csv_path: str, delimiter: str):
 
 def random_indices(length: int, seed: int = None) -> (np.ndarray, int):
     if seed is None:
-        seed = random.randrange(4294967295)
+        seed = random.randrange(2194967295)
 
     indices = np.arange(0, length)
     np.random.seed(seed)
@@ -98,6 +98,19 @@ def calc_set_size(set_sizes_rel, length):
     return set_off_size
 
 
+def calculate_split(nrows, set_sizes_rel, single_seg_mask, seed: int = None):
+    indices, seed = random_indices(nrows, seed)
+
+    indices_single_mask = indices[single_seg_mask]
+    # create some lists with indices into the original data
+    set_sizes = calc_set_size(set_sizes_rel, nrows)
+    set_indices = [indices_single_mask[start:end] for start, end in set_sizes]
+    _, lastend = set_sizes[-1]
+    training_set_indices = np.append(indices_single_mask[lastend:], indices[single_seg_mask == 0])
+
+    return training_set_indices, set_indices
+
+
 def plot_hist(ax, hist, bins, title: str = ""):
     # print(np.min(hist[np.nonzero(hist)]),np.max(hist))
     width = np.diff(bins)
@@ -110,17 +123,17 @@ def plot_hist(ax, hist, bins, title: str = ""):
 
 def plot_set(set: np.ndarray, name: str = '', bins=None, bin_default: Union[str, int] = 'fd'):
     if bins is None:
-        bins = [bin_default for _ in range(data.shape[1])]
+        bins = [bin_default for _ in range(set.shape[1])]
         bins[0] = 2
         bins[1] = 2
 
-    fig, ax = plt.subplots(data.shape[1])
+    fig, ax = plt.subplots(set.shape[1])
     fig.suptitle(name)
     fig.canvas.set_window_title(name)
 
     for i in range(data.shape[1]):
         # fig, ax = plt.subplots()
-        hist, hist_bins = np.histogram(data[:, i], bins[i])
+        hist, hist_bins = np.histogram(set[:, i], bins[i])
         plot_hist(ax[i], hist, hist_bins, title=fieldnames[i + 2])
 
 
@@ -150,26 +163,20 @@ if __name__ == '__main__':
     data_text, data, single_seg_mask = read_data(path, csv_delimiter)
     diagnosis_accepted_mask = diagnosis_mask(data_text[:, 2])
 
+    # filter out irrelevant diagonses
     data = data[diagnosis_accepted_mask]
     data_text = data_text[diagnosis_accepted_mask]
     single_seg_mask = single_seg_mask[diagnosis_accepted_mask]
-
     nrows = data.shape[0]
-    indices, seed = random_indices(nrows)
 
-    indices_single_mask = indices[single_seg_mask]
-
-    set_sizes = calc_set_size(set_sizes_rel, nrows)
-    set_indices = [indices_single_mask[start:end] for start, end in set_sizes]
-    _, lastend = set_sizes[-1]
-
-    training_set_indices = np.append(indices_single_mask[lastend:], indices[single_seg_mask == 0])
+    training_set_indices, set_indices = calculate_split(nrows, set_sizes_rel, single_seg_mask, seed=None)
 
     training_set = data[training_set_indices]
     training_set_text = data_text[training_set_indices]
     sets = [data[i] for i in set_indices]
     sets_text = [data_text[i] for i in set_indices]
 
+    # statistics
     sum = training_set.shape[0]
     print(f"trainig set size: {training_set.shape[0]} or about {training_set.shape[0]/nrows*100}% ")
     for idx, set in enumerate(sets):
@@ -177,13 +184,13 @@ if __name__ == '__main__':
         print(f"set_{idx} size: {set.shape[0]} or about {set.shape[0]/nrows*100}%")
     assert sum == nrows
 
+    print("saving")
     np.savetxt(os.path.join(log_directory, 'training_set.csv'), training_set_text, delimiter=csv_delimiter, fmt="%s")
     for idx, set in enumerate(sets_text):
         np.savetxt(os.path.join(log_directory, f'set_{idx}_{set.shape[0]/nrows*100}.csv'),
                    set,
                    delimiter=csv_delimiter,
                    fmt="%s")
-
 
     if do_plot:
         print('creating plots')
