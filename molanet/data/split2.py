@@ -122,6 +122,9 @@ def plot_hist(ax, hist, bins, title: str = ""):
 
 
 def plot_set(set: np.ndarray, name: str = '', bins=None, bin_default: Union[str, int] = 'fd'):
+    print()
+    print(name)
+
     if bins is None:
         bins = [bin_default for _ in range(set.shape[1])]
         bins[0] = 2
@@ -134,13 +137,14 @@ def plot_set(set: np.ndarray, name: str = '', bins=None, bin_default: Union[str,
     for i in range(data.shape[1]):
         # fig, ax = plt.subplots()
         hist, hist_bins = np.histogram(set[:, i], bins[i])
+        print(np.min(hist))
         plot_hist(ax[i], hist, hist_bins, title=fieldnames[i + 2])
 
 
 def custom_bins():
     bins = [None] * 7
-    bins[0] = 2
-    bins[1] = 2
+    bins[0] = [0, 0.5, 1.0]
+    bins[1] = [0, 0.5, 1.0]
     bins[2] = [60.0, 107.0, 220, 255.9]
     bins[3] = [58.0, 130.0, 210.0, 255]
     bins[4] = [8, 22, 46, 66, 84, 110]
@@ -169,8 +173,51 @@ if __name__ == '__main__':
     single_seg_mask = single_seg_mask[diagnosis_accepted_mask]
     nrows = data.shape[0]
 
+    bins = custom_bins()
+    for i in range(data.shape[1]):
+        hist, _ = np.histogram(data[:, i], bins[i])
+        print(np.min(hist))
+
+
+    def ensure_set_min_counts(bins, set_count, data, min=[50, 50, 25, 50, 50, 50, 36]):
+
+        def check_feature_done(i: int) -> bool:
+            for b in bin_counts[i]:
+                if not b >= min[i]:
+                    return False
+            return True
+
+        used_indices = []
+        set_indices = []
+        for set_idx in range(set_count):
+            bin_counts = [[0] * (len(bin) - 1) for bin in bins]
+            set_indices.append([])
+
+            for i in range(data.shape[1]):
+                if check_feature_done(i): continue
+                for row, feature in enumerate(data[:, i]):
+                    if row in used_indices: continue
+
+                    # check to which hist bin the feature belongs
+                    if check_feature_done(i): break
+                    for k in range(len(bins[i]) - 1):
+                        if bin_counts[i][k] < min[i] and feature >= bins[i][k] and feature <= bins[i][k + 1]:
+                            # add whole row to indices and update other bin_counts accordingly
+                            set_indices[set_idx].append(row)
+                            used_indices.append(row)
+
+                            for l, otherfeatues in enumerate(data[row, :]):
+                                for j in range(len(bins[l]) - 1):
+                                    if otherfeatues >= bins[l][j] and otherfeatues <= bins[l][j + 1]:
+                                        bin_counts[l][j] += 1
+
+        print([len(seti) for seti in set_indices], set_indices)
+        return set_indices
+
+
     training_set_indices, set_indices = calculate_split(nrows, set_sizes_rel, single_seg_mask, seed=None)
 
+    training_set_indices, _ = ensure_set_min_counts(custom_bins(), 2, data)
     training_set = data[training_set_indices]
     training_set_text = data_text[training_set_indices]
     sets = [data[i] for i in set_indices]
@@ -182,7 +229,7 @@ if __name__ == '__main__':
     for idx, set in enumerate(sets):
         sum += set[:, 0].size
         print(f"set_{idx} size: {set.shape[0]} or about {set.shape[0]/nrows*100}%")
-    assert sum == nrows
+    # assert sum == nrows
 
     print("saving")
     np.savetxt(os.path.join(log_directory, 'training_set.csv'), training_set_text, delimiter=csv_delimiter, fmt="%s")
