@@ -86,29 +86,102 @@ def diagnosis_mask(diagnosis: np.ndarray) -> np.ndarray:
     return mask
 
 
-def calc_set_size(set_sizes_rel, length):
+def ensure_set_min_counts(bins, set_count, data, indices, min):
+    def check_feature_done(i: int) -> bool:
+        for b in bin_counts[i]:
+            if not b >= min[i]:
+                return False
+        return True
+
+    used_indices = []
+    set_indices = []
+    for set_idx in range(set_count):
+        bin_counts = [[0] * (len(bin) - 1) for bin in bins]
+        set_indices.append([])
+
+        for i in range(len(bins)):
+            if check_feature_done(i):
+                print(i, bin_counts)
+                continue
+
+            for row in range(data.shape[0]):
+                if indices[row] in used_indices:
+                    continue
+                feature = data[indices[row], i]
+
+                # check to which hist bin the feature belongs
+                if check_feature_done(i): break
+                for k in range(len(bins[i]) - 1):
+                    if bin_counts[i][k] < min[i] and feature >= bins[i][k] and feature < bins[i][k + 1]:
+                        # add whole row to indices and update other bin_counts accordingly
+                        set_indices[set_idx].append(indices[row])
+                        used_indices.append(indices[row])
+
+                        for l, otherfeatues in enumerate(data[indices[row], :]):
+                            for j in range(len(bins[l]) - 1):
+                                if otherfeatues >= bins[l][j] and otherfeatues <= bins[l][j + 1]:
+                                    bin_counts[l][j] += 1
+        print(bin_counts)
+
+    print([len(seti) for seti in set_indices], set_indices)
+    print(np.unique(used_indices).size)
+    assert len(used_indices) == np.unique(used_indices).size
+    return set_indices, used_indices
+
+
+def calculate_split(nrows,
+                    set_sizes_rel,
+                    single_seg_mask,
+                    indices,
+                    used_indices=None,
+                    set_indices_must_use=None):
+    # filter indices we already used in an earlier step
+    # this sort of implicitly works because the multimask indices were never used before
+    indices_not_used_mask = np.ones(len(indices))
+    indices_not_used_mask[used_indices] = 0
+    print(f"sum = {np.sum(indices_not_used_mask)}")
+    indices_single_mask = indices[np.all([single_seg_mask, indices_not_used_mask], axis=0)]
+    print(indices_single_mask.size)
+
+    print([len(indices) for indices in set_indices_must_use])
+    # create some lists with indices into the original data
+    if set_indices_must_use is not None:
+        set_sizes = calc_set_size(set_sizes_rel, nrows, [len(indices) for indices in set_indices_must_use])
+    else:
+        set_sizes = calc_set_size(set_sizes_rel, nrows)
+
+    set_indices = []
+    for idx, sizes in enumerate(set_sizes):
+        start, end = sizes
+        combined = np.append(indices_single_mask[start:end], set_indices_must_use[idx])
+        set_indices.append(combined)
+    _, lastend = set_sizes[-1]
+    print(indices_single_mask.size + indices[single_seg_mask == 0].size + len(set_indices_must_use[0])
+          + len(set_indices_must_use[1]), 0, 0)
+    training_set_indices = np.append(indices_single_mask[lastend:],
+                                     indices[np.all([single_seg_mask == 0, indices_not_used_mask == 1], axis=0)])
+    print(training_set_indices.size, np.unique(training_set_indices).size)
+
+    return training_set_indices, set_indices
+
+
+def calc_set_size(set_sizes_rel, total_rows, lengths_in_use=None):
     offset = 0
     set_off_size = []
-    for set_size_rel in set_sizes_rel:
-        set_size = int(length * set_size_rel)
+    for idx, set_size_rel in enumerate(set_sizes_rel):
+        set_size = int(total_rows * set_size_rel)
+        if lengths_in_use is not None:
+            if set_size <= lengths_in_use[idx]:
+                # do not use additional data as we are already full
+                set_off_size.append((offset, offset))
+                continue
+
+            set_size -= lengths_in_use[idx]
         # start,end
         set_off_size.append((offset, offset + set_size))
         offset += set_size
 
     return set_off_size
-
-
-def calculate_split(nrows, set_sizes_rel, single_seg_mask, seed: int = None):
-    indices, seed = random_indices(nrows, seed)
-
-    indices_single_mask = indices[single_seg_mask]
-    # create some lists with indices into the original data
-    set_sizes = calc_set_size(set_sizes_rel, nrows)
-    set_indices = [indices_single_mask[start:end] for start, end in set_sizes]
-    _, lastend = set_sizes[-1]
-    training_set_indices = np.append(indices_single_mask[lastend:], indices[single_seg_mask == 0])
-
-    return training_set_indices, set_indices
 
 
 def plot_hist(ax, hist, bins, title: str = ""):
@@ -162,6 +235,7 @@ if __name__ == '__main__':
     fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size', 'diagnosis']
     log_directory = ''
     csv_delimiter = ";"
+    SEED = None
 
     # input reading
     data_text, data, single_seg_mask = read_data(path, csv_delimiter)
@@ -178,46 +252,30 @@ if __name__ == '__main__':
         hist, _ = np.histogram(data[:, i], bins[i])
         print(np.min(hist))
 
+    indices_single_seg, seed = random_indices(data[single_seg_mask].shape[0], seed=SEED)
 
-    def ensure_set_min_counts(bins, set_count, data, min=[50, 50, 25, 50, 50, 50, 36]):
+    # get these values by looking at the min counts of the histograms per feature
+    minimum_per_hist_buck_by_features = [50, 50, 25, 50, 50, 50, 36]
+    # TODO these minimums are for two additional sets (double these numbers and divide by num_sets)
+    assert len(set_sizes_rel) == 2
+    additional_sets_indices, used_indices = ensure_set_min_counts(custom_bins(),
+                                                                  len(set_sizes_rel),
+                                                                  data[single_seg_mask],
+                                                                  indices_single_seg,
+                                                                  minimum_per_hist_buck_by_features)
 
-        def check_feature_done(i: int) -> bool:
-            for b in bin_counts[i]:
-                if not b >= min[i]:
-                    return False
-            return True
+    indices, seed = random_indices(nrows, seed=SEED)
 
-        used_indices = []
-        set_indices = []
-        for set_idx in range(set_count):
-            bin_counts = [[0] * (len(bin) - 1) for bin in bins]
-            set_indices.append([])
-
-            for i in range(data.shape[1]):
-                if check_feature_done(i): continue
-                for row, feature in enumerate(data[:, i]):
-                    if row in used_indices: continue
-
-                    # check to which hist bin the feature belongs
-                    if check_feature_done(i): break
-                    for k in range(len(bins[i]) - 1):
-                        if bin_counts[i][k] < min[i] and feature >= bins[i][k] and feature <= bins[i][k + 1]:
-                            # add whole row to indices and update other bin_counts accordingly
-                            set_indices[set_idx].append(row)
-                            used_indices.append(row)
-
-                            for l, otherfeatues in enumerate(data[row, :]):
-                                for j in range(len(bins[l]) - 1):
-                                    if otherfeatues >= bins[l][j] and otherfeatues <= bins[l][j + 1]:
-                                        bin_counts[l][j] += 1
-
-        print([len(seti) for seti in set_indices], set_indices)
-        return set_indices
+    training_set_indices, set_indices = calculate_split(nrows,
+                                                        set_sizes_rel,
+                                                        single_seg_mask,
+                                                        indices,
+                                                        used_indices,
+                                                        additional_sets_indices)
 
 
-    training_set_indices, set_indices = calculate_split(nrows, set_sizes_rel, single_seg_mask, seed=None)
 
-    training_set_indices, _ = ensure_set_min_counts(custom_bins(), 2, data)
+
     training_set = data[training_set_indices]
     training_set_text = data_text[training_set_indices]
     sets = [data[i] for i in set_indices]
@@ -227,9 +285,10 @@ if __name__ == '__main__':
     sum = training_set.shape[0]
     print(f"trainig set size: {training_set.shape[0]} or about {training_set.shape[0]/nrows*100}% ")
     for idx, set in enumerate(sets):
-        sum += set[:, 0].size
+        sum += set.shape[0]
         print(f"set_{idx} size: {set.shape[0]} or about {set.shape[0]/nrows*100}%")
-    # assert sum == nrows
+    print(sum, nrows, nrows - sum)
+    assert sum == nrows
 
     print("saving")
     np.savetxt(os.path.join(log_directory, 'training_set.csv'), training_set_text, delimiter=csv_delimiter, fmt="%s")
