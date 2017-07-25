@@ -86,7 +86,7 @@ if __name__ == "__main__":
     config = tf.ConfigProto(log_device_placement=args.debug_placement)
     if args.xla:
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
-        print("enabled JIT XLA compilation")
+        print("Enabled JIT XLA compilation")
 
     with tf.Session(config=config) as sess:
         print("Session started")
