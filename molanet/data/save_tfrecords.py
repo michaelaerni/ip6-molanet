@@ -42,7 +42,7 @@ class RecordSaver(object):
             writer.write(example.SerializeToString())
 
     def write_meta_data(self, sample_uuids: List[Tuple[str, str]]):
-        os.makedirs(self._root_directory)
+        os.makedirs(self._root_directory, exist_ok=True)
         meta_path = os.path.join(self._root_directory, f"{self._data_set}.txt")
         with open(meta_path, mode="w") as f:
             f.write(os.linesep.join(

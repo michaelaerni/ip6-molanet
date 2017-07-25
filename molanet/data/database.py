@@ -49,6 +49,29 @@ class DatabaseConnection(object):
             self._connection.commit()
             return cur.rowcount  # Number of deleted rows
 
+    def create_data_set_entries(self, data_set_name: str, entries: List[Tuple[str, str]]):
+        query = """INSERT INTO set_entries (mole_sample_uuid, segmentation_source_id, set_name)
+                   VALUES (%(mole_sample_uuid)s, %(segmentation_source_id)s, %(set_name)s)"""
+
+        with self._connection.cursor() as cur:
+            for mole_sample_uuid, segmentation_source_id in entries:
+                # Insert entry
+                cur.execute(query, {
+                    "mole_sample_uuid": mole_sample_uuid,
+                    "segmentation_source_id": segmentation_source_id,
+                    "set_name": data_set_name
+                })
+
+        self._connection.commit()
+
+    def clear_data_set_entries(self, data_set_name: str) -> int:
+        query = """DELETE FROM set_entries WHERE set_name = %(set_name)s"""
+
+        with self._connection.cursor() as cur:
+            cur.execute(query, {"set_name": data_set_name})
+            self._connection.commit()
+            return cur.rowcount  # Number of deleted rows
+
     def get_data_set_samples(self, data_set: str)\
             -> Iterable[Tuple[MoleSample, List[Segmentation]]]:
         sample_uuid_query = """SELECT DISTINCT mole_sample_uuid FROM set_entries WHERE set_name = %(set_name)s"""

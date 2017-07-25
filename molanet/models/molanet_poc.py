@@ -6,7 +6,7 @@ from datetime import datetime
 import tensorflow as tf
 
 from molanet.base import NetworkTrainer, TrainingOptions
-from molanet.input import create_fixed_input_pipeline
+from molanet.input import create_fixed_input_pipeline, create_static_input_pipeline
 from molanet.models.pix2pix import Pix2PixFactory
 from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
 
@@ -14,8 +14,11 @@ from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
 def create_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser("Molanet PoC script")
 
-    parser.add_argument("--sampledir", type=str, help="Root sample directory")
-    parser.add_argument("--metafile", type=str, help="CSV file containing the UUIDs of the training samples")
+    parser.add_argument("--sampledir", type=str,
+                        help="Root sample directory, containing set directories and meta files")
+    parser.add_argument("--test-set", type=str, help="Name of the test set")
+    parser.add_argument("--cv-set", type=str, help="Name of the cv set")
+    parser.add_argument("--train-set", type=str, help="Name of the training set")
     parser.add_argument("--logdir", type=str, help="Directory into which summaries and checkpoints are written")
     parser.add_argument("--restore", type=int, help="If set, restores the model from logdir with the given iteration")
     parser.add_argument("--debug-placement", action="store_true", help="Output device placement")
@@ -43,13 +46,19 @@ if __name__ == "__main__":
         os.makedirs(logdir)
 
     tf.reset_default_graph()
-    input_x, input_y = create_fixed_input_pipeline(args.sampledir, args.metafile, 1, 20, 512,
-                                                   thread_count=4, min_after_dequeue=10)
+
+    # Create input pipelines
+    training_data = create_fixed_input_pipeline(args.sampledir, args.train_set,
+                                                   batch_size=1, epochs=20, image_size=512,
+                                                   thread_count=4, min_after_dequeue=10, name="train")
+    cv_data = create_static_input_pipeline(args.sampledir, args.cv_set,
+                                                               batch_size=1, image_size=512, name="cv")
     print("Input pipeline created")
+
     network_factory = Pix2PixFactory(512)
     trainer = NetworkTrainer(
-        input_x,
-        input_y,
+        training_data,
+        cv_data,
         network_factory,
         WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=args.l1_lambda),
         training_options=TrainingOptions(
