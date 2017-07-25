@@ -96,7 +96,7 @@ def ensure_set_min_counts(bins, set_count, data, indices, mask, min):
                 return False
         return True
 
-    used_indices = []
+    used_index_indices = []  # so many levels of indirection :/
     set_indices = []
     for set_idx in range(set_count):
         bin_counts = [[0] * (len(bin) - 1) for bin in bins]
@@ -104,11 +104,10 @@ def ensure_set_min_counts(bins, set_count, data, indices, mask, min):
 
         for i in range(len(bins)):
             if check_feature_done(i):
-                print(i, bin_counts)
                 continue
 
             for row in range(data.shape[0]):
-                if mask[row] == 0 or row in used_indices: continue
+                if mask[row] == 0 or row in used_index_indices: continue
                 feature = data[indices[row], i]
 
                 # check to which hist bin the feature belongs
@@ -117,18 +116,16 @@ def ensure_set_min_counts(bins, set_count, data, indices, mask, min):
                     if bin_counts[i][k] < min[i] and feature >= bins[i][k] and feature <= bins[i][k + 1]:
                         # add whole row to indices and update other bin_counts accordingly
                         set_indices[set_idx].append(indices[row])
-                        used_indices.append(row)
+                        used_index_indices.append(row)
 
                         for l, otherfeatues in enumerate(data[indices[row], :]):
                             for j in range(len(bins[l]) - 1):
                                 if otherfeatues >= bins[l][j] and otherfeatues <= bins[l][j + 1]:
                                     bin_counts[l][j] += 1
-        print(bin_counts)
 
-    print([len(seti) for seti in set_indices], set_indices)
-    print(np.unique(used_indices).size)
-    assert len(used_indices) == np.unique(used_indices).size
-    return set_indices, used_indices
+    print(f"chose {[len(seti) for seti in set_indices]} examples to satisfy minimum bin requirements")
+    assert len(used_index_indices) == np.unique(used_index_indices).size
+    return set_indices, used_index_indices
 
 
 def calculate_split(nrows,
@@ -141,12 +138,8 @@ def calculate_split(nrows,
     # this sort of implicitly works because the multimask indices were never used before
     indices_not_used_mask = np.ones(indices.size)
     indices_not_used_mask[used_indices] = 0
-    print(f"sum = {np.sum(indices_not_used_mask)}")
-    print(indices_not_used_mask.size, single_seg_mask.size, indices.size)
     indices_single_mask = indices[np.all([single_seg_mask, indices_not_used_mask], axis=0)]
-    print(indices_single_mask.size)
 
-    print([len(indices) for indices in set_indices_must_use])
     # create some lists with indices into the original data
     if set_indices_must_use is not None:
         set_sizes = calc_set_size(set_sizes_rel, nrows, [len(indices) for indices in set_indices_must_use])
@@ -159,11 +152,9 @@ def calculate_split(nrows,
         combined = np.append(indices_single_mask[start:end], set_indices_must_use[idx])
         set_indices.append(combined)
     _, lastend = set_sizes[-1]
-    print(indices_single_mask.size + indices[single_seg_mask == 0].size + len(set_indices_must_use[0])
-          + len(set_indices_must_use[1]), 0, 0)
+
     training_set_indices = np.append(indices_single_mask[lastend:],
                                      indices[np.all([single_seg_mask == 0, indices_not_used_mask == 1], axis=0)])
-    print(training_set_indices.size, np.unique(training_set_indices).size)
 
     return training_set_indices, set_indices
 
@@ -198,7 +189,6 @@ def plot_hist(ax, hist, bins, title: str = ""):
 
 
 def plot_set(set: np.ndarray, name: str = '', bins=None, bin_default: Union[str, int] = 'fd'):
-    print()
     print(name)
 
     if bins is None:
@@ -250,11 +240,6 @@ if __name__ == '__main__':
     single_seg_mask = single_seg_mask[diagnosis_accepted_mask]
     nrows = data.shape[0]
 
-    bins = custom_bins()
-    for i in range(data.shape[1]):
-        hist, _ = np.histogram(data[:, i], bins[i])
-        print(np.min(hist))
-
     indices, indices_masked, seed = random_indices(nrows, single_seg_mask, seed=SEED)
 
     # get these values by looking at the min counts of the histograms per feature
@@ -289,7 +274,6 @@ if __name__ == '__main__':
     for idx, set in enumerate(sets):
         sum += set.shape[0]
         print(f"set_{idx} size: {set.shape[0]} or about {set.shape[0]/nrows*100}%")
-    print(sum, nrows, nrows - sum)
     assert sum == nrows
 
     print("saving")
@@ -301,7 +285,7 @@ if __name__ == '__main__':
                    fmt="%s")
 
     if do_plot:
-        print('creating plots')
+        print('creating plots and printing actual histogram min bin counts')
         plot_set(data, 'whole data set')
 
         bins = custom_bins()
