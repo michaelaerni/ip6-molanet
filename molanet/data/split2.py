@@ -63,11 +63,13 @@ def random_indices(length: int, mask: np.ndarray = None, seed: int = None) -> (n
         seed = random.randrange(2194967295)
 
     indices = np.arange(0, length)
-    indices = indices[mask]
+    indices_masked = indices[mask]
     np.random.seed(seed)
     np.random.shuffle(indices)
+    np.random.seed(seed)
+    np.random.shuffle(indices_masked)
     print(f"using seed={seed}")
-    return indices, seed
+    return indices, indices_masked, seed
 
 
 def diagnosis_mask(diagnosis: np.ndarray) -> np.ndarray:
@@ -87,7 +89,7 @@ def diagnosis_mask(diagnosis: np.ndarray) -> np.ndarray:
     return mask
 
 
-def ensure_set_min_counts(bins, set_count, data, indices, min):
+def ensure_set_min_counts(bins, set_count, data, indices, mask, min):
     def check_feature_done(i: int) -> bool:
         for b in bin_counts[i]:
             if not b >= min[i]:
@@ -105,9 +107,8 @@ def ensure_set_min_counts(bins, set_count, data, indices, min):
                 print(i, bin_counts)
                 continue
 
-            for row in range(indices.shape[0]):
-                if indices[row] in used_indices:
-                    continue
+            for row in range(data.shape[0]):
+                if mask[row] == 0 or row in used_indices: continue
                 feature = data[indices[row], i]
 
                 # check to which hist bin the feature belongs
@@ -116,7 +117,7 @@ def ensure_set_min_counts(bins, set_count, data, indices, min):
                     if bin_counts[i][k] < min[i] and feature >= bins[i][k] and feature <= bins[i][k + 1]:
                         # add whole row to indices and update other bin_counts accordingly
                         set_indices[set_idx].append(indices[row])
-                        used_indices.append(indices[row])
+                        used_indices.append(row)
 
                         for l, otherfeatues in enumerate(data[indices[row], :]):
                             for j in range(len(bins[l]) - 1):
@@ -141,6 +142,7 @@ def calculate_split(nrows,
     indices_not_used_mask = np.ones(indices.size)
     indices_not_used_mask[used_indices] = 0
     print(f"sum = {np.sum(indices_not_used_mask)}")
+    print(indices_not_used_mask.size, single_seg_mask.size, indices.size)
     indices_single_mask = indices[np.all([single_seg_mask, indices_not_used_mask], axis=0)]
     print(indices_single_mask.size)
 
@@ -253,7 +255,7 @@ if __name__ == '__main__':
         hist, _ = np.histogram(data[:, i], bins[i])
         print(np.min(hist))
 
-    indices_single_seg, seed = random_indices(nrows, single_seg_mask, seed=SEED)
+    indices, indices_masked, seed = random_indices(nrows, single_seg_mask, seed=SEED)
 
     # get these values by looking at the min counts of the histograms per feature
     minimum_per_hist_buck_by_features = [50, 50, 25, 50, 50, 50, 36]
@@ -262,10 +264,9 @@ if __name__ == '__main__':
     additional_sets_indices, used_indices = ensure_set_min_counts(custom_bins(),
                                                                   len(set_sizes_rel),
                                                                   data,
-                                                                  indices_single_seg,
+                                                                  indices,
+                                                                  single_seg_mask,
                                                                   minimum_per_hist_buck_by_features)
-
-    indices, seed = random_indices(nrows, seed=SEED)
 
     training_set_indices, set_indices = calculate_split(nrows,
                                                         set_sizes_rel,
