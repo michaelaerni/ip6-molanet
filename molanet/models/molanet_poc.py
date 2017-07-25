@@ -7,7 +7,7 @@ import tensorflow as tf
 
 from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
-    EvaluationPipeline
+    EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb
 from molanet.models.pix2pix import Pix2PixFactory
 from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
 
@@ -48,11 +48,17 @@ if __name__ == "__main__":
 
     tf.reset_default_graph()
 
+    AUGMENTATION_FUNCTIONS = [
+        lambda image, segmentation: random_rotate_flip_rgb(image, segmentation),
+        lambda image, segmentation: (random_contrast_rgb(image, 0.8, 1.2), segmentation),
+        lambda image, segmentation: (random_brightness_rgb(image, -0.3, 0.3), segmentation)
+    ]
+
     # Create input pipelines
     # TODO: Image size is hardcoded
     training_pipeline = TrainingPipeline(args.sampledir, args.train_set, image_size=512,
                                          batch_size=1, read_thread_count=4, batch_thread_count=4,
-                                         name="training")
+                                         augmentation_functions=AUGMENTATION_FUNCTIONS, name="training")
     cv_pipeline = EvaluationPipeline(args.sampledir, args.cv_set, image_size=512,
                                      batch_size=1, batch_thread_count=4,
                                      name="cv")
