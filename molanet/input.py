@@ -175,3 +175,141 @@ class EvaluationPipeline(InputPipeline):
             )
 
             return image_batch, segmentation_batch
+
+
+# TODO: Data augmentation functions assume NHWC
+
+# TODO: Could implement random noise for augmentation
+
+
+def _rotate_90(sample_tensor: tf.Tensor) -> tf.Tensor:
+    tf.assert_rank(sample_tensor, 3)
+
+    # 90° = Transpose rows and columns -> mirror horizontal
+    return _flip_horizontal(tf.transpose(sample_tensor, perm=[1, 0, 2]))
+
+
+def _rotate_180(sample_tensor: tf.Tensor) -> tf.Tensor:
+    tf.assert_rank(sample_tensor, 3)
+
+    # 180° = Mirror horizontal and vertical = Reverse rows and columns
+    return _flip_horizontal(_flip_vertical(sample_tensor))
+
+
+def _rotate_270(sample_tensor: tf.Tensor) -> tf.Tensor:
+    tf.assert_rank(sample_tensor, 3)
+
+    # 270° = Transpose rows and columns -> mirror vertical
+    return _flip_vertical(tf.transpose(sample_tensor, perm=[1, 0, 2]))
+
+
+def _flip_horizontal(sample_tensor: tf.Tensor) -> tf.Tensor:
+    tf.assert_rank(sample_tensor, 3)
+
+    return tf.reverse(sample_tensor, axis=[1])  # Mirror horizontally (= reverse column order)
+
+
+def _flip_vertical(sample_tensor: tf.Tensor) -> tf.Tensor:
+    tf.assert_rank(sample_tensor, 3)
+
+    return tf.reverse(sample_tensor, axis=[0])  # Mirror vertically (= reverse row order)
+
+
+def _random_flip_single(sample_tensor: tf.Tensor) -> tf.Tensor:
+    tf.assert_rank(sample_tensor, 3)
+
+    return tf.cond(
+        tf.less(tf.random_uniform([], minval=0.0, maxval=1.0), 0.5),  # Calculate random mirroring, 50% chance to mirror
+        lambda: _flip_horizontal(sample_tensor),  # Flip horizontal
+        lambda: sample_tensor)  # Don't mirror, leave as is
+
+
+def _random_rotate_single(sample_tensor: tf.Tensor) -> tf.Tensor:
+    tf.assert_rank(sample_tensor, 3)
+
+    # Choose random rotation, 0 = 0°, 1 = 90°, 2 = 180°, 3 = 270°
+    rotation = tf.random_uniform([], minval=0, maxval=4, dtype=tf.int32)
+
+    return tf.case({
+        tf.equal(rotation, tf.constant(1)): lambda: _rotate_90(sample_tensor),
+        tf.equal(rotation, tf.constant(2)): lambda: _rotate_180(sample_tensor),
+        tf.equal(rotation, tf.constant(3)): lambda: _rotate_270(sample_tensor)
+    }, default=lambda: sample_tensor, exclusive=True)
+
+
+def random_rotate_flip_rgb(images: tf.Tensor, segmentations: tf.Tensor, name: str = None) -> Tuple[tf.Tensor, tf.Tensor]:
+    # TODO: Document: Rotates randomly [0, 90, 180, 270] degrees and optionally flips horizontal, achieves all transform
+
+    with tf.name_scope("augmentation"), tf.name_scope(name, "random_rotate_flip"):
+        # Concat images and segmentations for easier and faster handling
+        concatenated_samples = tf.concat([images, segmentations], axis=3, name="concatenate_samples")
+
+        # Apply rotations
+        rotated_samples = tf.map_fn(_random_rotate_single, concatenated_samples)
+
+        # Randomly mirror samples individually
+        mirrored_samples = tf.map_fn(_random_flip_single, rotated_samples)
+
+        # Extract images and segmentations again
+        augmented_images = mirrored_samples[:, :, :, :3]
+        augmented_segmentations = mirrored_samples[:, :, :, 3:]
+
+        return augmented_images, augmented_segmentations
+
+
+def random_contrast_rgb(images: tf.Tensor, lower: float, upper: float, name: str = None) -> tf.Tensor:
+    if lower < 0 or lower >= upper:
+        raise ValueError("Lower bound must be positive and strictly lower than upper bound")
+
+    with tf.name_scope("augmentation"), tf.name_scope(name, "random_contrast"):
+        # Calculate random adjustments for each image in batch
+        images_shape = tf.shape(images)
+        batch_size = images_shape[0]
+        height = images_shape[1]
+        width = images_shape[2]
+        adjustments = tf.random_uniform([batch_size], minval=lower, maxval=upper, dtype=tf.float32)
+
+        # Tile adjustments to get uniform increase/decrease on all 3 channels of each image
+        adjustments = tf.tile(tf.reshape(adjustments, [batch_size, 1, 1, 1]), [1, height, width, 3])
+
+        # Convert images from tanh into [0, 1] range to avoid unexpected behaviour
+        # TODO: Is conversion from tanh back really necessary?
+        images = tf.divide(tf.add(1.0, images), 2.0)
+
+        # Apply contrast adjustment
+        # TODO (x - mean) * contrast_factor + mean
+
+        # Calculate mean for each image for each channel
+        means = tf.tile(
+            tf.reduce_mean(
+                tf.reduce_mean(images, axis=2, keep_dims=True),
+                axis=1, keep_dims=True),
+            [1, height, width, 1])
+
+        # Subtract mean from each pixel
+        images = tf.subtract(images, means)
+
+        # Scale by contrast factor and add means again
+        adjusted_images = tf.add(tf.multiply(images, adjustments), means)
+
+        # Convert back to tanh range and clamp
+        return tf.clip_by_value(tf.multiply(2.0, tf.subtract(adjusted_images, 0.5)), -1.0, 1.0)
+
+
+def random_brightness_rgb(images: tf.Tensor, lower: float, upper: float, name: str = None) -> tf.Tensor:
+    if lower >= upper:
+        raise ValueError("Lower bound must be strictly smaller than upper bound")
+
+    with tf.name_scope("augmentation"), tf.name_scope(name, "random_brightness"):
+        # Calculate random adjustments for each image in batch
+        images_shape = tf.shape(images)
+        batch_size = images_shape[0]
+        height = images_shape[1]
+        width = images_shape[2]
+        adjustments = tf.random_uniform([batch_size], minval=lower, maxval=upper, dtype=tf.float32)
+
+        # Tile adjustments to get uniform increase/decrease on all 3 channels of each image
+        adjustments = tf.tile(tf.reshape(adjustments, [batch_size, 1, 1, 1]), [1, height, width, 3])
+
+        # Apply adjustments, clamp into tanh range
+        return tf.clip_by_value(tf.add(images, adjustments), -1.0, 1.0)
