@@ -200,7 +200,7 @@ def plot_set(set: np.ndarray, name: str = '', bins=None, bin_default: Union[str,
     fig.suptitle(name)
     fig.canvas.set_window_title(name)
 
-    for i in range(data.shape[1]):
+    for i in range(set.shape[1]):
         # fig, ax = plt.subplots()
         hist, hist_bins = np.histogram(set[:, i], bins[i])
         print(np.min(hist))
