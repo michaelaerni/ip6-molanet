@@ -165,7 +165,6 @@ class NetworkTrainer(object):
 
         # Iteration counter
         self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.int64)
-        self._max_iterations = training_options.max_iterations
 
     def train(self, sess: tf.Session):
         # TODO: Remove prints everywhere
@@ -207,9 +206,6 @@ class NetworkTrainer(object):
         summary_writer = tf.summary.FileWriter(self._training_options.summary_directory, sess.graph)
         try:
             while not coord.should_stop():
-                if iteration >= self._max_iterations:
-                    coord.request_stop()
-
                 if iteration % self._training_options.save_model_interval == 0:
                     saver.save(sess, save_model_path, global_step=iteration)
                     print(f"Saved model from iteration {iteration}")
@@ -235,8 +231,10 @@ class NetworkTrainer(object):
                 else:
                     _, iteration = sess.run([self._op_generator, step_update])
 
-        except tf.errors.OutOfRangeError:
-            print("Epoch limit reached, training stopped")
+                # Check for iteration limit reached
+                if iteration >= self._training_options.max_iterations:
+                    coord.request_stop()
+
         finally:
             summary_writer.close()
             coord.request_stop()

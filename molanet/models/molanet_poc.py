@@ -26,7 +26,8 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logsubdir", action="store_true", help="Create a subdirectory in logdir for each new run")
     parser.add_argument("--discriminator-iterations", type=int, default=1, help="Number of discriminator iterations")
     parser.add_argument("--l1-lambda", type=int, default=0, help="Generator loss l1 lambda")
-    parser.add_argument("--max-iterations",type=int,default=50000,help="maximum number of iterations before training stops")
+    parser.add_argument("--max-iterations", type=int,
+                        help="Maximum number of iterations before training stops")
     parser.add_argument("--xla", action="store_true",
                         help="enable JIT compilation to XLA at the session level (gpu only)")
     return parser
