@@ -1,10 +1,11 @@
 import os
-import shutil
 from typing import Union, Tuple, NamedTuple
 
 import numpy as np
 import tensorflow as tf
 from PIL import Image
+
+from molanet.input import InputPipeline
 
 
 class NetworkFactory(object):
@@ -123,8 +124,8 @@ class NetworkTrainer(object):
 
     def __init__(
             self,
-            training_data: Tuple[tf.Tensor, tf.Tensor],
-            cv_data: Tuple[tf.Tensor, tf.Tensor, int],
+            training_pipeline: InputPipeline,
+            cv_pipeline: InputPipeline,
             network_factory: NetworkFactory,
             objective_factory: ObjectiveFactory,
             training_options: TrainingOptions,
@@ -133,8 +134,11 @@ class NetworkTrainer(object):
             beta2: float = 0.999):
         self._training_options = training_options
 
-        self._train_x, self._train_y = training_data
-        self._cv_x, self._cv_y, self._cv_sample_count = cv_data
+        self._training_pipeline = training_pipeline
+        self._cv_pipeline = cv_pipeline
+
+        self._train_x, self._train_y = training_pipeline.create_pipeline()
+        self._cv_x, self._cv_y = cv_pipeline.create_pipeline()
 
         # Create networks
         self._generator = network_factory.create_generator(self._train_x)
