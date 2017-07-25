@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from molanet.data.entities import Diagnosis
 
 
-def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
+def read_and_filter_data(features_csv_path: str, fieldnames: [str], delimiter: str):
     seg_uuid_map = {}
     feature_map = {}
 
@@ -74,7 +74,7 @@ def read_data(features_csv_path: str, fieldnames: [str], delimiter: str):
         print(f"parsed {nrows} rows")
         print(f"{len(multi_seg_indices)} masks which do not map to a distinct uuid")
         print(
-            f"discarded {sum([len(list) for list in discarded_diagnosis])} masks because of diagnosis.\n{discarded_diagnosis}")
+            f"discarded {sum([len(discarded_diagnosis[key]) for key in discarded_diagnosis])} masks because of diagnosis.")
 
         mask_indices = np.unique(multi_seg_indices + discard_diagnosis_indices)
 
@@ -141,20 +141,21 @@ def count_features(data, featurenames: [str],
         if (plot):
             plot_hist(ax[idx - front_str_cols], hist, hist_bins, title=f"{setname}_{featurenames[idx]}")
 
-    if (plot):
-        fig.savefig(os.path.join(logdir, f"{setname}_set.png"), bbox_inches='tight', papertype="a4")
+    if logdir is not None:
+        if (plot):
+            fig.savefig(os.path.join(logdir, f"{setname}_set.png"), bbox_inches='tight', papertype="a4")
 
-    # assuming uuid and seg_id are in columns 1 and 2 respectively
-    with open(os.path.join(logdir, f"{setname}_set.csv"), 'w') as f:
-        f.write(f"uuid;segmentation_id;")
-        for i in range(0, len(data[0])):
-            s = f"{data[0][i]};{data[1][i]};"
-            f.write(s + "\n")
+        # assuming uuid and seg_id are in columns 1 and 2 respectively
+        with open(os.path.join(logdir, f"{setname}_set.csv"), 'w') as f:
+            f.write(f"uuid;segmentation_id;")
+            for i in range(0, len(data[0])):
+                s = f"{data[0][i]};{data[1][i]};"
+                f.write(s + "\n")
 
 if __name__ == '__main__':
     path = r"C:\Users\pdcwi\Downloads\features.csv"
     fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size', 'diagnosis']
-    data = read_data(path, fieldnames, ";")
+    data = read_and_filter_data(path, fieldnames, ";")
     data_single, data_multimask = data
     do_plot = True
     log_directory = ''
