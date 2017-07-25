@@ -26,7 +26,9 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logsubdir", action="store_true", help="Create a subdirectory in logdir for each new run")
     parser.add_argument("--discriminator-iterations", type=int, default=1, help="Number of discriminator iterations")
     parser.add_argument("--l1-lambda", type=int, default=0, help="Generator loss l1 lambda")
-
+    parser.add_argument("--max-iterations",type=int,default=50000,help="maximum number of iterations before training stops")
+    parser.add_argument("--xla", action="store_true",
+                        help="enable JIT compilation to XLA at the session level (gpu only)")
     return parser
 
 
@@ -73,14 +75,20 @@ if __name__ == "__main__":
         WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=args.l1_lambda),
         training_options=TrainingOptions(
             summary_directory=logdir,
-            discriminator_iterations=args.discriminator_iterations),
+            discriminator_iterations=args.discriminator_iterations,
+            max_iterations=args.max_iterations),
         learning_rate=0.0001, beta1=0, beta2=0.9)
     print("Trainer created")
 
     if args.debug_placement:
         print("Device placement logging is enabled")
 
-    with tf.Session(config=tf.ConfigProto(log_device_placement=args.debug_placement)) as sess:
+    config = tf.ConfigProto(log_device_placement=args.debug_placement)
+    if args.xla:
+        config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
+        print("enabled JIT XLA compilation")
+
+    with tf.Session(config=config) as sess:
         print("Session started")
         sess.run((tf.global_variables_initializer(), tf.local_variables_initializer()))
 
