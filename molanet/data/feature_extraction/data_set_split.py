@@ -1,7 +1,7 @@
 import csv
 import os
 import random
-from typing import Union
+from typing import Union, Iterable
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -188,7 +188,8 @@ def plot_hist(ax, hist, bins, title: str = ""):
     ax.set_title(title)
 
 
-def plot_set(set: np.ndarray, name: str = '', bins=None, bin_default: Union[str, int] = 'fd'):
+def plot_set(set: np.ndarray, fieldnames: Iterable[str], name: str = '', bins=None,
+             bin_default: Union[str, int] = 'fd'):
     print(name)
 
     if bins is None:
