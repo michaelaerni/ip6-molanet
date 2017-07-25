@@ -74,7 +74,7 @@ class RecordSaver(object):
         assert sample_image.dtype == np.uint8
         image = Image.fromarray(sample_image, mode="RGB")
 
-        image.thumbnail((size, size), Image.LANCZOS)
+        image.thumbnail((size, size), Image.NEAREST)
         padding = Image.new("RGB", (size, size), (0, 0, 0))  # Black
         padding.paste(image, ((padding.size[0] - image.size[0]) // 2, (padding.size[1] - image.size[1]) // 2))
         return np.asarray(padding, dtype=np.uint8)
