@@ -74,7 +74,7 @@ class RecordSaver(object):
         assert sample_image.dtype == np.uint8
         image = Image.fromarray(sample_image, mode="RGB")
 
-        image.thumbnail((size, size), Image.LANCZOS)
+        image.thumbnail((size, size), Image.NEAREST)
         padding = Image.new("RGB", (size, size), (0, 0, 0))  # Black
         padding.paste(image, ((padding.size[0] - image.size[0]) // 2, (padding.size[1] - image.size[1]) // 2))
         return np.asarray(padding, dtype=np.uint8)
@@ -82,12 +82,12 @@ class RecordSaver(object):
     @staticmethod
     def _resize_segmentation(segmentation: np.ndarray, size: int) -> np.ndarray:
         assert segmentation.dtype == np.uint8
-        image = Image.fromarray(np.squeeze(segmentation), mode="1")
+        image = Image.fromarray(np.squeeze(segmentation) * 255, mode="L")
 
         image.thumbnail((size, size), Image.NEAREST)
-        padding = Image.new("1", (size, size), 0)  # Background
+        padding = Image.new("L", (size, size), 0)  # Background
         padding.paste(image, ((padding.size[0] - image.size[0]) // 2, (padding.size[1] - image.size[1]) // 2))
-        return np.asarray(padding, dtype=np.uint8).reshape((size, size, 1))
+        return np.asarray(padding, dtype=np.uint8).reshape((size, size, 1)) / 255
 
     @staticmethod
     def _float_list(array: np.ndarray):
