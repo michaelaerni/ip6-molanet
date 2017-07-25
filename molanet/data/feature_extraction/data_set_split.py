@@ -1,5 +1,4 @@
 import csv
-import os
 import random
 from typing import Union, Iterable
 
@@ -220,78 +219,3 @@ def custom_bins():
     bins[6] = [e * 1e7 for e in bins[6]]
 
     return bins
-
-if __name__ == '__main__':
-    # arguments
-    path = r"C:\Users\pdcwi\Downloads\features.csv"
-    set_sizes_rel = [0.15, 0.2]
-    do_plot = True
-    fieldnames = ['uuid', 'seg_id', 'hair', 'plaster', 'mean', 'median', 'stddev', 'rel_size', 'abs_size', 'diagnosis']
-    log_directory = ''
-    csv_delimiter = ";"
-    SEED = None
-
-    # input reading
-    data_text, data, single_seg_mask = read_data(path, csv_delimiter)
-    diagnosis_accepted_mask = diagnosis_mask(data_text[:, 2])
-
-    # filter out irrelevant diagonses
-    data = data[diagnosis_accepted_mask]
-    data_text = data_text[diagnosis_accepted_mask]
-    single_seg_mask = single_seg_mask[diagnosis_accepted_mask]
-    nrows = data.shape[0]
-
-    indices, indices_masked, seed = random_indices(nrows, single_seg_mask, seed=SEED)
-
-    # get these values by looking at the min counts of the histograms per feature
-    minimum_per_hist_buck_by_features = [50, 50, 25, 50, 50, 50, 36]
-    # TODO these minimums are for two additional sets (double these numbers and divide by num_sets)
-    assert len(set_sizes_rel) == 2
-    additional_sets_indices, used_indices = ensure_set_min_counts(custom_bins(),
-                                                                  len(set_sizes_rel),
-                                                                  data,
-                                                                  indices,
-                                                                  single_seg_mask,
-                                                                  minimum_per_hist_buck_by_features)
-
-    training_set_indices, set_indices = calculate_split(nrows,
-                                                        set_sizes_rel,
-                                                        single_seg_mask,
-                                                        indices,
-                                                        used_indices,
-                                                        additional_sets_indices)
-
-
-
-
-    training_set = data[training_set_indices]
-    training_set_text = data_text[training_set_indices]
-    sets = [data[i] for i in set_indices]
-    sets_text = [data_text[i] for i in set_indices]
-
-    # statistics
-    sum = training_set.shape[0]
-    print(f"trainig set size: {training_set.shape[0]} or about {training_set.shape[0]/nrows*100}% ")
-    for idx, set in enumerate(sets):
-        sum += set.shape[0]
-        print(f"set_{idx} size: {set.shape[0]} or about {set.shape[0]/nrows*100}%")
-    assert sum == nrows
-
-    print("saving")
-    np.savetxt(os.path.join(log_directory, 'training_set.csv'), training_set_text, delimiter=csv_delimiter, fmt="%s")
-    for idx, set in enumerate(sets_text):
-        np.savetxt(os.path.join(log_directory, f'set_{idx}_{set.shape[0]/nrows*100}.csv'),
-                   set,
-                   delimiter=csv_delimiter,
-                   fmt="%s")
-
-    if do_plot:
-        print('creating plots and printing actual histogram min bin counts')
-        plot_set(data, 'whole data set')
-
-        bins = custom_bins()
-        plot_set(training_set, 'training_set', bins)
-        for idx, set in enumerate(sets):
-            plot_set(set, f'set_{idx}_({set.shape[0]/nrows*100}%)', bins)
-
-        plt.show()
