@@ -67,19 +67,8 @@ if __name__ == "__main__":
                                      name="cv")
 
     print("Input pipeline created")
-
-    network_factory = Pix2PixFactory(512)
-    trainer = NetworkTrainer(
-        training_pipeline,
-        cv_pipeline,
-        network_factory,
-        WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=args.l1_lambda),
-        training_options=TrainingOptions(
-            summary_directory=logdir,
-            discriminator_iterations=args.discriminator_iterations,
-            max_iterations=args.max_iterations),
-        learning_rate=0.0001, beta1=0, beta2=0.9)
-    print("Trainer created")
+    print(f"Training set size: {training_pipeline.sample_count}")
+    print(f"CV set size: {cv_pipeline.sample_count}")
 
     if args.debug_placement:
         print("Device placement logging is enabled")
@@ -89,13 +78,27 @@ if __name__ == "__main__":
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
         print("Enabled JIT XLA compilation")
 
-    with tf.Session(config=config) as sess:
+    network_factory = Pix2PixFactory(512)
+    trainer = NetworkTrainer(
+        training_pipeline,
+        cv_pipeline,
+        network_factory,
+        WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=args.l1_lambda),
+        training_options=TrainingOptions(
+            save_summary_interval=1,
+            summary_directory=logdir,
+            discriminator_iterations=args.discriminator_iterations,
+            max_iterations=args.max_iterations,
+            session_configuration=config),
+        learning_rate=0.0001, beta1=0, beta2=0.9)
+    print("Trainer created")
+
+    with trainer:
         print("Session started")
-        sess.run((tf.global_variables_initializer(), tf.local_variables_initializer()))
 
         if args.restore is not None:
-            trainer.restore(sess, args.restore)
+            trainer.restore(args.restore)
             print(f"Iteration {args.restore} restored")
 
         print("Starting training")
-        trainer.train(sess)
+        trainer.train()

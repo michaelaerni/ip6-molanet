@@ -6,7 +6,7 @@ from molanet.base import ObjectiveFactory, NetworkFactory
 class WassersteinGradientPenaltyFactory(ObjectiveFactory):
 
     def __init__(self, gradient_lambda: float, network_factory: NetworkFactory, l1_lambda: float = 0.0, seed: int = None):
-        self._gradient_lambda = tf.constant(gradient_lambda, dtype=tf.float32)
+        self._gradient_lambda = gradient_lambda
         self._seed = seed
         self._network_factory = network_factory
         self._l1_lambda = l1_lambda
@@ -27,7 +27,8 @@ class WassersteinGradientPenaltyFactory(ObjectiveFactory):
 
         gradient = tf.gradients(gradient_discriminator, gradient_discriminator_input)
         gradient_norm = tf.norm(gradient)
-        gradient_penalty = self._gradient_lambda * tf.reduce_mean((gradient_norm - tf.ones_like(gradient_norm)) ** 2)
+        gradient_penalty = tf.multiply(tf.constant(self._gradient_lambda, dtype=tf.float32),
+                                       tf.reduce_mean((gradient_norm - tf.ones_like(gradient_norm)) ** 2))
 
         loss_generated = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
             logits=generator_discriminator,

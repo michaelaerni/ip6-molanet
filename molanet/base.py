@@ -114,10 +114,11 @@ class ObjectiveFactory(object):
 
 class TrainingOptions(NamedTuple):
     summary_directory: str
+    max_iterations: int
     save_summary_interval: int = 10
     save_model_interval: int = 1000
     discriminator_iterations: int = 1
-    max_iterations: int
+    session_configuration: tf.ConfigProto = None
 
 
 class NetworkTrainer(object):
@@ -135,59 +136,93 @@ class NetworkTrainer(object):
             beta2: float = 0.999):
         self._training_options = training_options
 
-        self._training_pipeline = training_pipeline
-        self._cv_pipeline = cv_pipeline
+        # Create training graph
+        self._training_graph = tf.Graph()
+        with self._training_graph.as_default():
+            self._training_pipeline = training_pipeline
+            self._train_x, self._train_y = training_pipeline.create_pipeline()
 
-        self._train_x, self._train_y = training_pipeline.create_pipeline()
-        self._cv_x, self._cv_y = cv_pipeline.create_pipeline()
+            # Create networks
+            self._generator = network_factory.create_generator(self._train_x)
+            self._discriminator_generated = network_factory.create_discriminator(self._train_x, self._generator)
+            self._discriminator_real = network_factory.create_discriminator(self._train_x, self._train_y, reuse=True)
 
-        # Create networks
-        self._generator = network_factory.create_generator(self._train_x)
-        self._discriminator_generated = network_factory.create_discriminator(self._train_x, self._generator)
-        self._discriminator_real = network_factory.create_discriminator(self._train_x, self._train_y, reuse=True)
+            # Create losses
+            self._generator_loss = objective_factory.create_generator_loss(
+                self._train_x, self._train_y, self._generator, self._discriminator_generated)
+            self._discriminator_loss = objective_factory.create_discriminator_loss(
+                self._train_x, self._train_y, self._generator, self._discriminator_generated, self._discriminator_real)
 
-        # Create losses
-        self._generator_loss = objective_factory.create_generator_loss(
-            self._train_x, self._train_y, self._generator, self._discriminator_generated)
-        self._discriminator_loss = objective_factory.create_discriminator_loss(
-            self._train_x, self._train_y, self._generator, self._discriminator_generated, self._discriminator_real)
+            # Create optimizers
+            trainable_variables = tf.trainable_variables()
+            variables_discriminator = [var for var in trainable_variables if var.name.startswith("discriminator")]
+            variables_generator = [var for var in trainable_variables if var.name.startswith("generator")]
 
-        # Create optimizers
-        trainable_variables = tf.trainable_variables()
-        variables_discriminator = [var for var in trainable_variables if var.name.startswith("discriminator")]
-        variables_generator = [var for var in trainable_variables if var.name.startswith("generator")]
+            self._optimizer_generator = tf.train.AdamOptimizer(learning_rate, beta1, beta2, name="adam_generator")
+            self._optimizer_discriminator = tf.train.AdamOptimizer(learning_rate, beta1, beta2, name="adam_discriminator")
 
-        self._optimizer_generator = tf.train.AdamOptimizer(learning_rate, beta1, beta2, name="adam_generator")
-        self._optimizer_discriminator = tf.train.AdamOptimizer(learning_rate, beta1, beta2, name="adam_discriminator")
+            self._op_generator = self._optimizer_generator.minimize(self._generator_loss, var_list=variables_generator)
+            self._op_discriminator = self._optimizer_discriminator.minimize(self._discriminator_loss, var_list=variables_discriminator)
 
-        self._op_generator = self._optimizer_generator.minimize(self._generator_loss, var_list=variables_generator)
-        self._op_discriminator = self._optimizer_discriminator.minimize(self._discriminator_loss, var_list=variables_discriminator)
+            # Iteration counter
+            self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.int64)
 
-        # Iteration counter
-        self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.int64)
+        # Create CV graph
+        self._cv_graph = tf.Graph()
+        with self._cv_graph.as_default():
+            self._cv_pipeline = cv_pipeline
+            self._cv_x, self._cv_y = cv_pipeline.create_pipeline()
 
-    def train(self, sess: tf.Session):
+            # TODO: Actual CV handling
+
+    def __enter__(self):
+        self._training_session = tf.Session(
+            graph=self._training_graph, config=self._training_options.session_configuration)
+        self._cv_session = tf.Session(
+            graph=self._cv_graph, config=self._training_options.session_configuration)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._cv_session.close()
+        self._training_session.close()
+
+    def train(self):
         # TODO: Remove prints everywhere
 
-        # Create summaries
-        accuracy, precision, recall, f1_score = self._create_summaries()
+        # Initialize variables
+        # TODO: Does this work with restore?
+        with self._training_graph.as_default():
+            # Need to specify graph because two new ops are created
+            self._training_session.run((tf.global_variables_initializer(), tf.local_variables_initializer()))
 
-        tf.summary.scalar("accuracy", accuracy)
-        tf.summary.scalar("precision", precision)
-        tf.summary.scalar("recall", recall)
-        tf.summary.scalar("f1_score", f1_score)
+            # Create summaries
+            accuracy, precision, recall, f1_score = self._create_summaries()
 
-        # TODO: Better summary handling
-        train_summary = tf.summary.merge_all()
+            tf.summary.scalar("accuracy", accuracy)
+            tf.summary.scalar("precision", precision)
+            tf.summary.scalar("recall", recall)
+            tf.summary.scalar("f1_score", f1_score)
+
+            # TODO: Better summary handling
+            train_summary = tf.summary.merge_all()
+
+            step_update = tf.assign_add(self._global_step, 1)
+
+            concatenated_images = tf.cast(tf.round(tf.concat([
+                (self._train_x + 1.0) / 2.0 * 255.0,
+                tf.tile((self._train_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+                tf.tile((self._generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+                tf.tile(tf.abs(tf.subtract(self._generator, self._train_y)), multiples=[1, 1, 1, 3]) * 255.0
+            ], axis=2)), dtype=tf.uint8)
+
+            saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
+            summary_writer = tf.summary.FileWriter(self._training_options.summary_directory, self._training_graph)
 
         # Start input enqueue threads.
         coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+        threads = tf.train.start_queue_runners(sess=self._training_session, coord=coord)
 
-        step_update = tf.assign_add(self._global_step, 1)
-
-        # TODO: Use internal epoch handling instead of input pipeline one
-        iteration = sess.run(self._global_step)
+        iteration = self._training_session.run(self._global_step)
 
         save_model_path = os.path.join(self._training_options.summary_directory, "model.ckpt")
         save_image_path = os.path.join(self._training_options.summary_directory, "images/")
@@ -195,28 +230,19 @@ class NetworkTrainer(object):
         if not os.path.exists(save_image_path):
             os.makedirs(save_image_path)
 
-        concatenated_images = tf.cast(tf.round(tf.concat([
-            (self._train_x + 1.0) / 2.0 * 255.0,
-            tf.tile((self._train_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-            tf.tile((self._generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-            tf.tile(tf.abs(tf.subtract(self._generator, self._train_y)), multiples=[1, 1, 1, 3]) * 255.0
-        ], axis=2)), dtype=tf.uint8)
-
-        saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
-        summary_writer = tf.summary.FileWriter(self._training_options.summary_directory, sess.graph)
         try:
             while not coord.should_stop():
                 if iteration % self._training_options.save_model_interval == 0:
-                    saver.save(sess, save_model_path, global_step=iteration)
+                    saver.save(self._training_session, save_model_path, global_step=iteration)
                     print(f"Saved model from iteration {iteration}")
 
                 # Train discriminator
                 for _ in range(self._training_options.discriminator_iterations):
-                    sess.run(self._op_discriminator)
+                    self._training_session.run(self._op_discriminator)
 
                 # Train generator, optionally output summary
                 if iteration % self._training_options.save_summary_interval == 0:
-                    _, iteration, current_summary, generated_images = sess.run(
+                    _, iteration, current_summary, generated_images = self._training_session.run(
                         [self._op_generator, step_update, train_summary, concatenated_images])
 
                     summary_writer.add_summary(current_summary, iteration)
@@ -229,7 +255,7 @@ class NetworkTrainer(object):
 
                     print(f"Iteration {iteration} done")
                 else:
-                    _, iteration = sess.run([self._op_generator, step_update])
+                    _, iteration = self._training_session.run([self._op_generator, step_update])
 
                 # Check for iteration limit reached
                 if iteration >= self._training_options.max_iterations:
