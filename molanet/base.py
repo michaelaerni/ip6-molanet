@@ -3,6 +3,7 @@ from typing import Union, Tuple, NamedTuple, List
 
 import numpy as np
 import tensorflow as tf
+from PIL import Image
 
 from molanet.input import InputPipeline
 
@@ -273,9 +274,19 @@ class NetworkTrainer(object):
                 if current_iteration % self._training_options.cv_summary_interval == 0:
                     print("Evaluating CV set...")
 
+                    # TODO: Make configurable?
+                    IMAGE_OUTPUT_COUNT = 5
+
                     # Generate individual summaries
                     cv_summaries = []
-                    for _ in range(self._cv_pipeline.sample_count):
+                    cv_images = []
+                    for _ in range(IMAGE_OUTPUT_COUNT):
+                        current_summary, current_image = self._sess.run(
+                            (self._cv_summary, self._concatenated_images_op))
+                        cv_summaries.append(current_summary)
+                        cv_images.append(current_image)
+
+                    for _ in range(IMAGE_OUTPUT_COUNT, self._cv_pipeline.sample_count):
                         cv_summaries.append(self._sess.run(self._cv_summary))
 
                     # Convert summaries into numpy array and calculate the average for all tags
@@ -298,6 +309,13 @@ class NetworkTrainer(object):
                     # Write summary
                     self._cv_summary_writer.add_summary(result_proto, current_iteration)
 
+                    # Write images
+                    # TODO: Don't use hardcoded size
+                    for idx, current_image in enumerate(cv_images):
+                        output_image = np.reshape(current_image, (512, 512 * 4, 3))
+                        Image.fromarray(output_image, "RGB").save(
+                            os.path.join(save_image_path, f"sample_{idx:02d}_{iteration:08d}.png"))
+
                 # Train discriminator
                 for _ in range(self._training_options.discriminator_iterations):
                     self._sess.run(self._op_discriminator)
@@ -307,13 +325,6 @@ class NetworkTrainer(object):
                     _, current_summary = self._sess.run([self._op_generator, self._train_summary])
 
                     self._train_summary_writer.add_summary(current_summary, iteration)
-
-                    # # TODO: Don't use hardcoded size
-                    # # TODO: Do this in CV
-                    # # Take first image for output
-                    # output_image = np.reshape(generated_images[0], (512, 512 * 4, 3))
-                    # Image.fromarray(output_image, "RGB").save(
-                    #     os.path.join(save_image_path, f"sample_{iteration:08d}.png"))
 
                     print(f"Iteration {iteration} done")
                 else:
