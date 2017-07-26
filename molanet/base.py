@@ -113,7 +113,7 @@ class ObjectiveFactory(object):
 class TrainingOptions(NamedTuple):
     summary_directory: str
     max_iterations: int
-    training_summary_interval: int = 10
+    training_summary_interval: int = 20
     cv_summary_interval: int = 100
     save_model_interval: int = 1000
     discriminator_iterations: int = 1
