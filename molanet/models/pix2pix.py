@@ -20,7 +20,7 @@ class Pix2PixFactory(NetworkFactory):
         self._spatial_extent = spatial_extent
         self._weight_initializer = weight_initializer
 
-    def create_generator(self, x: tf.Tensor, reuse: bool = False, apply_summary: bool = True) -> tf.Tensor:
+    def create_generator(self, x: tf.Tensor, reuse: bool = False) -> tf.Tensor:
         with tf.variable_scope("generator", reuse=reuse):
             input_tensor = x
             encoder_activations = []
@@ -48,7 +48,7 @@ class Pix2PixFactory(NetworkFactory):
             # TODO: Initial image is not concatenated
             for idx in range(layer_count):
                 use_batchnorm = idx < layer_count - 1
-                keep_probability = tf.constant(0.5) if idx < 3 else tf.constant(1.0) # TODO: When to use dropout
+                keep_probability = tf.constant(0.5) if idx < 3 else tf.constant(1.0)  # TODO: When to use dropout
                 encoder_index = layer_count - idx - 1 - 1
                 target_layer_size = 2 ** (idx + 1)
                 do_activation = encoder_index > 0
@@ -57,7 +57,7 @@ class Pix2PixFactory(NetworkFactory):
                     if encoder_index >= 0 else 1
                 input_tensor, _, _ = self._conv2d_transpose(input_tensor, feature_count,
                                                             target_layer_size,
-                                                    f"dec_{idx}", keep_probability, batch_size,
+                                                            f"dec_{idx}", keep_probability, batch_size,
                                                             filter_size=filter_sizes,
                                                             concat_activations=encoder_activations[encoder_index] if encoder_index >= 0 else None,
                                                             use_batchnorm=use_batchnorm,
@@ -70,7 +70,6 @@ class Pix2PixFactory(NetworkFactory):
             x: tf.Tensor,
             y: tf.Tensor,
             reuse: bool = False,
-            apply_summary: bool = True,
             return_input_tensor: bool = False) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
         with tf.variable_scope("discriminator", reuse=reuse):
             concatenated_input = tf.concat((x, y), axis=3)

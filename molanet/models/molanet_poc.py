@@ -60,13 +60,12 @@ if __name__ == "__main__":
     # Create input pipelines
     # TODO: Image size is hardcoded
     training_pipeline = TrainingPipeline(args.sampledir, args.train_set, image_size=512,
-                                         batch_size=1, read_thread_count=4, batch_thread_count=4,
+                                         batch_size=1, read_thread_count=4, batch_thread_count=1,
                                          augmentation_functions=AUGMENTATION_FUNCTIONS, name="training")
     cv_pipeline = EvaluationPipeline(args.sampledir, args.cv_set, image_size=512,
-                                     batch_size=1, batch_thread_count=4,
-                                     name="cv")
+                                     batch_size=1, batch_thread_count=1, name="cv")
 
-    print("Input pipeline created")
+    print("Input pipelines created")
     print(f"Training set size: {training_pipeline.sample_count}")
     print(f"CV set size: {cv_pipeline.sample_count}")
 
@@ -85,7 +84,8 @@ if __name__ == "__main__":
         network_factory,
         WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=args.l1_lambda),
         training_options=TrainingOptions(
-            save_summary_interval=1,
+            training_summary_interval=1,  # TODO: Increase back up
+            cv_summary_interval=1,
             summary_directory=logdir,
             discriminator_iterations=args.discriminator_iterations,
             max_iterations=args.max_iterations,

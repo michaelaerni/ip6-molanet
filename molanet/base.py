@@ -1,9 +1,8 @@
 import os
-from typing import Union, Tuple, NamedTuple
+from typing import Union, Tuple, NamedTuple, List
 
 import numpy as np
 import tensorflow as tf
-from PIL import Image
 
 from molanet.input import InputPipeline
 
@@ -21,14 +20,12 @@ class NetworkFactory(object):
             self,
             x: tf.Tensor,
             reuse: bool = False,
-            apply_summary: bool = True
     ) -> tf.Tensor:
         """
         Creates a generator network and optionally applies summary options where useful.
 
         :param x: Input for the created generator
         :param reuse: If False, the weights cannot exist yet, if True they will be reused. Defaults to False.
-        :param apply_summary: If True, summary operations will be added to the graph. Defaults to True.
         :return: Output tensor of the created generator
         """
 
@@ -39,7 +36,6 @@ class NetworkFactory(object):
             x: tf.Tensor,
             y: tf.Tensor,
             reuse: bool = False,
-            apply_summary: bool = True,
             return_input_tensor: bool = False
     ) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
         """
@@ -48,7 +44,6 @@ class NetworkFactory(object):
         :param x: Input tensor for the corresponding generator
         :param y: Tensor of the generated or real value for the input x
         :param reuse: If False, the weights cannot exist yet, if True they will be reused. Defaults to False.
-        :param apply_summary: If True, summary operations will be added to the graph. Defaults to True.
         :param return_input_tensor: If True, the concatenated input tensor which is fed to the network is returned too.
         Defaults to False.
         :return: Output tensor of the created discriminator as unscaled logits. If return_input_tensor is set to True,
@@ -74,16 +69,17 @@ class ObjectiveFactory(object):
             generator: tf.Tensor,
             generator_discriminator: tf.Tensor,
             apply_summary: bool = True
-    ) -> tf.Tensor:
+    ) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         """
         Creates the generator loss function and optionally applies summary options.
+        If apply_summary is True, a list of summary operations is returned together with the loss function.
 
         :param x: Input tensor which is fed to the generator
         :param y: Ground truth output for the given x
         :param generator: Generated output for the given x
         :param generator_discriminator: Discriminator logits for the generated output corresponding to the x
         :param apply_summary: If True, summary operations will be added to the graph. Defaults to True.
-        :return: Loss function for the generator which can be used for optimization
+        :return: Loss function for the generator which can be used for optimization and if specified summary ops
         """
 
         raise NotImplementedError("This method should be overridden by child classes")
@@ -96,9 +92,10 @@ class ObjectiveFactory(object):
             generator_discriminator: tf.Tensor,
             real_discriminator: tf.Tensor,
             apply_summary: bool = True
-    ) -> tf.Tensor:
+    ) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         """
         Creates the discriminator loss function and optionally applies summary options.
+        If apply_summary is True, a list of summary operations is returned together with the loss function.
 
         :param x: Input tensor which is fed to the generator
         :param y: Ground truth output for the given x
@@ -106,7 +103,7 @@ class ObjectiveFactory(object):
         :param generator_discriminator: Discriminator logits for the generated output corresponding to the x
         :param real_discriminator: Discriminator logits for the ground truth output
         :param apply_summary: If True, summary operations will be added to the graph. Defaults to True.
-        :return: Loss function for the discriminator which can be used for optimization
+        :return: Loss function for the discriminator which can be used for optimization and if specified summary ops
         """
 
         raise NotImplementedError("This method should be overridden by child classes")
@@ -115,7 +112,8 @@ class ObjectiveFactory(object):
 class TrainingOptions(NamedTuple):
     summary_directory: str
     max_iterations: int
-    save_summary_interval: int = 10
+    training_summary_interval: int = 10
+    cv_summary_interval: int = 100
     save_model_interval: int = 1000
     discriminator_iterations: int = 1
     session_configuration: tf.ConfigProto = None
@@ -137,10 +135,10 @@ class NetworkTrainer(object):
         self._training_options = training_options
 
         # Create training graph
-        self._training_graph = tf.Graph()
-        with self._training_graph.as_default():
-            self._training_pipeline = training_pipeline
-            self._train_x, self._train_y = training_pipeline.create_pipeline()
+        with tf.name_scope("training"):
+            with tf.device("cpu:0"):
+                self._training_pipeline = training_pipeline
+                self._train_x, self._train_y = training_pipeline.create_pipeline()
 
             # Create networks
             self._generator = network_factory.create_generator(self._train_x)
@@ -148,9 +146,9 @@ class NetworkTrainer(object):
             self._discriminator_real = network_factory.create_discriminator(self._train_x, self._train_y, reuse=True)
 
             # Create losses
-            self._generator_loss = objective_factory.create_generator_loss(
+            self._generator_loss, generator_summary = objective_factory.create_generator_loss(
                 self._train_x, self._train_y, self._generator, self._discriminator_generated)
-            self._discriminator_loss = objective_factory.create_discriminator_loss(
+            self._discriminator_loss, discriminator_summary = objective_factory.create_discriminator_loss(
                 self._train_x, self._train_y, self._generator, self._discriminator_generated, self._discriminator_real)
 
             # Create optimizers
@@ -166,63 +164,85 @@ class NetworkTrainer(object):
 
             # Iteration counter
             self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.int64)
+            self._step_op = tf.assign_add(self._global_step, 1)
+
+            # Create summary operation
+            accuracy, precision, recall, f1_score = self._create_summaries(self._generator, self._train_y)
+            summary_operations = [
+                tf.summary.scalar("accuracy", accuracy),
+                tf.summary.scalar("precision", precision),
+                tf.summary.scalar("recall", recall),
+                tf.summary.scalar("f1_score", f1_score)
+            ]
+
+            # TODO: Input pipeline summary is lost
+
+            # Merge summaries
+            self._train_summary = tf.summary.merge(summary_operations + generator_summary + discriminator_summary)
+            self._train_summary_writer = tf.summary.FileWriter(
+                self._training_options.summary_directory, filename_suffix="training", graph=tf.get_default_graph())
+
+            self._train_saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
 
         # Create CV graph
-        self._cv_graph = tf.Graph()
-        with self._cv_graph.as_default():
-            self._cv_pipeline = cv_pipeline
-            self._cv_x, self._cv_y = cv_pipeline.create_pipeline()
+        with tf.name_scope("cv"):
+            with tf.device("cpu:0"):
+                self._cv_pipeline = cv_pipeline
+                self._cv_x, self._cv_y = self._cv_pipeline.create_pipeline()
 
-            # TODO: Actual CV handling
+            # Create networks
+            generator = network_factory.create_generator(self._cv_x, reuse=True)
+            discriminator_generated = network_factory.create_discriminator(self._cv_x, generator, reuse=True)
+            discriminator_real = network_factory.create_discriminator(self._cv_x, self._cv_y, reuse=True)
+
+            # Create losses
+            _, generator_summary = objective_factory.create_generator_loss(
+                self._cv_x, self._cv_y, generator, discriminator_generated)
+            _, discriminator_summary = objective_factory.create_discriminator_loss(
+                self._cv_x, self._cv_y, generator, discriminator_generated, discriminator_real)
+
+            # Create other summary options
+            accuracy, precision, recall, f1_score = self._create_summaries(generator, self._cv_y)
+
+            # Create summary operation
+            summary_operations = [
+                tf.summary.scalar("accuracy", accuracy),
+                tf.summary.scalar("precision", precision),
+                tf.summary.scalar("recall", recall),
+                tf.summary.scalar("f1_score", f1_score)
+            ]
+
+            # Concatenated images
+            self._concatenated_images_op = tf.cast(tf.round(tf.concat([
+                (self._cv_x + 1.0) / 2.0 * 255.0,
+                tf.tile((self._cv_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+                tf.tile((generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+                tf.tile(tf.abs(tf.subtract(generator, self._cv_y)), multiples=[1, 1, 1, 3]) * 255.0
+            ], axis=2)), dtype=tf.uint8)
+
+            # Merge summaries
+            self._cv_summary = tf.summary.merge(summary_operations + generator_summary + discriminator_summary)
+            self._cv_summary_writer = tf.summary.FileWriter(
+                self._training_options.summary_directory, filename_suffix="cv")
 
     def __enter__(self):
-        self._training_session = tf.Session(
-            graph=self._training_graph, config=self._training_options.session_configuration)
-        self._cv_session = tf.Session(
-            graph=self._cv_graph, config=self._training_options.session_configuration)
+        self._sess = tf.Session(config=self._training_options.session_configuration)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._cv_session.close()
-        self._training_session.close()
+        self._sess.close()
+        self._sess = None
 
     def train(self):
+        if self._sess is None:
+            raise RuntimeError("A running session is required to start training")
+
         # TODO: Remove prints everywhere
-
-        # Initialize variables
-        # TODO: Does this work with restore?
-        with self._training_graph.as_default():
-            # Need to specify graph because two new ops are created
-            self._training_session.run((tf.global_variables_initializer(), tf.local_variables_initializer()))
-
-            # Create summaries
-            accuracy, precision, recall, f1_score = self._create_summaries()
-
-            tf.summary.scalar("accuracy", accuracy)
-            tf.summary.scalar("precision", precision)
-            tf.summary.scalar("recall", recall)
-            tf.summary.scalar("f1_score", f1_score)
-
-            # TODO: Better summary handling
-            train_summary = tf.summary.merge_all()
-
-            step_update = tf.assign_add(self._global_step, 1)
-
-            concatenated_images = tf.cast(tf.round(tf.concat([
-                (self._train_x + 1.0) / 2.0 * 255.0,
-                tf.tile((self._train_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-                tf.tile((self._generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-                tf.tile(tf.abs(tf.subtract(self._generator, self._train_y)), multiples=[1, 1, 1, 3]) * 255.0
-            ], axis=2)), dtype=tf.uint8)
-
-            saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
-            summary_writer = tf.summary.FileWriter(self._training_options.summary_directory, self._training_graph)
 
         # Start input enqueue threads.
         coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=self._training_session, coord=coord)
-
-        iteration = self._training_session.run(self._global_step)
+        print("Starting queue runners...")
+        threads = tf.train.start_queue_runners(sess=self._sess, coord=coord)
 
         save_model_path = os.path.join(self._training_options.summary_directory, "model.ckpt")
         save_image_path = os.path.join(self._training_options.summary_directory, "images/")
@@ -230,54 +250,103 @@ class NetworkTrainer(object):
         if not os.path.exists(save_image_path):
             os.makedirs(save_image_path)
 
+        init_ops = (tf.global_variables_initializer(), tf.local_variables_initializer())
+
+        tf.get_default_graph().finalize()
+
+        # TODO: Does this work with restore?
+        self._sess.run(init_ops)
+        iteration = self._sess.run(self._global_step)
+
+        print("Starting training")
+
         try:
             while not coord.should_stop():
-                if iteration % self._training_options.save_model_interval == 0:
-                    saver.save(self._training_session, save_model_path, global_step=iteration)
+                current_iteration = iteration
+                iteration = self._sess.run(self._step_op)
+
+                if current_iteration % self._training_options.save_model_interval == 0:
+                    self._train_saver.save(self._sess, save_model_path, global_step=iteration)
                     print(f"Saved model from iteration {iteration}")
+
+                # Run CV validation
+                if current_iteration % self._training_options.cv_summary_interval == 0:
+                    print("Evaluating CV set...")
+
+                    # Generate individual summaries
+                    cv_summaries = []
+                    for _ in range(self._cv_pipeline.sample_count):
+                        cv_summaries.append(self._sess.run(self._cv_summary))
+
+                    # Convert summaries into numpy array and calculate the average for all tags
+                    # TODO: Validate that only scalar summaries
+                    summary_tags = [entry.tag for entry in tf.Summary.FromString(cv_summaries[0]).value]
+                    tag_index_mapping = {tag: idx for idx, tag in enumerate(summary_tags)}
+                    summary_values = np.zeros((len(cv_summaries), len(summary_tags)), dtype=np.float32)
+                    for idx, current_summary in enumerate(cv_summaries):
+                        for entry in tf.Summary.FromString(current_summary).value:
+                            summary_values[idx, tag_index_mapping[entry.tag]] = entry.simple_value
+
+                    real_summary = np.mean(summary_values, axis=0)
+
+                    # Create output summary proto
+                    value_list = [
+                        tf.Summary.Value(tag=tag, simple_value=real_summary[idx])
+                        for idx, tag in enumerate(summary_tags)]
+                    result_proto = tf.Summary(value=value_list)
+
+                    # Write summary
+                    self._cv_summary_writer.add_summary(result_proto, current_iteration)
 
                 # Train discriminator
                 for _ in range(self._training_options.discriminator_iterations):
-                    self._training_session.run(self._op_discriminator)
+                    self._sess.run(self._op_discriminator)
 
                 # Train generator, optionally output summary
-                if iteration % self._training_options.save_summary_interval == 0:
-                    _, iteration, current_summary, generated_images = self._training_session.run(
-                        [self._op_generator, step_update, train_summary, concatenated_images])
+                if current_iteration % self._training_options.training_summary_interval == 0:
+                    _, current_summary = self._sess.run([self._op_generator, self._train_summary])
 
-                    summary_writer.add_summary(current_summary, iteration)
+                    self._train_summary_writer.add_summary(current_summary, iteration)
 
-                    # TODO: Don't use hardcoded size
-                    # Take first image for output
-                    output_image = np.reshape(generated_images[0], (512, 512 * 4, 3))
-                    Image.fromarray(output_image, "RGB").save(
-                        os.path.join(save_image_path, f"sample_{iteration:08d}.png"))
+                    # # TODO: Don't use hardcoded size
+                    # # TODO: Do this in CV
+                    # # Take first image for output
+                    # output_image = np.reshape(generated_images[0], (512, 512 * 4, 3))
+                    # Image.fromarray(output_image, "RGB").save(
+                    #     os.path.join(save_image_path, f"sample_{iteration:08d}.png"))
 
                     print(f"Iteration {iteration} done")
                 else:
-                    _, iteration = self._training_session.run([self._op_generator, step_update])
+                    self._sess.run(self._op_generator)
 
                 # Check for iteration limit reached
                 if iteration >= self._training_options.max_iterations:
                     coord.request_stop()
+
         except Exception as ex:
             coord.request_stop(ex)
         finally:
-            summary_writer.close()
             coord.request_stop()
 
-        print("Waiting for threads to finish...")
-        coord.join(threads)
+            print("Waiting for threads to finish...")
+            coord.join(threads)
+
+            # Close writers AFTER threads stopped to make sure summaries are written
+            self._train_summary_writer.close()
+            self._cv_summary_writer.close()
 
         print("Training finished")
 
-    def restore(self, sess, restore):
-        saver = tf.train.Saver()
-        saver.restore(sess, os.path.join(self._training_options.summary_directory, f"model.ckpt-{restore}"))
+    def restore(self, iteration):
+        if self._sess is None:
+            raise RuntimeError("A running session is required to restore a model")
 
-    def _create_summaries(self) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-        generated_classes = tf.round((self._generator + 1.0) / 2.0)
-        real_classes = (self._train_y + 1.0) / 2.0
+        self._train_saver.restore(self._sess, os.path.join(self._training_options.summary_directory, f"model.ckpt-{iteration}"))
+
+    @staticmethod
+    def _create_summaries(generator: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+        generated_classes = tf.round((generator + 1.0) / 2.0)
+        real_classes = (y + 1.0) / 2.0
         generated_positives = tf.reduce_sum(generated_classes)
         real_positives = tf.reduce_sum(real_classes)
 
