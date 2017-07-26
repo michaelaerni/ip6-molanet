@@ -234,7 +234,8 @@ class NetworkTrainer(object):
                 # Check for iteration limit reached
                 if iteration >= self._training_options.max_iterations:
                     coord.request_stop()
-
+        except Exception as ex:
+            coord.request_stop(ex)
         finally:
             summary_writer.close()
             coord.request_stop()
