@@ -27,13 +27,6 @@ class RGBToLabConverter(ColorConverter):
     """
     @staticmethod
     def convert(input_image: tf.Tensor) -> tf.Tensor:
-        print("convert called")
-
-        def fsfsdf(t):
-            print(t.shape)
-            return t ** (1 / 3) if t > (6 / 29) ** 3 \
-                else t / (3 * ((6 / 29) ** 2)) + 4 / 29
-
         def f(t):
             condition = tf.greater(t, (6 / 29) ** 3)
             return tf.where(condition, tf.pow(t,1/3),t / (3 * ((6 / 29) ** 2)) + 4 / 29)
@@ -45,16 +38,12 @@ class RGBToLabConverter(ColorConverter):
                                [0.2126729, 0.7151522, 0.0721750],
                                [0.0193339, 0.1191920, 0.9503041]], dtype=tf.float32)
 
-        print(f"multiplying { input_image.shape} with {rgb2xyz.shape}")
         xyz = tf.matmul(rgb2xyz, tf.transpose(tf.reshape(input_image, [-1, 3]))) * 100
         xyz = tf.reshape(xyz,input_image.shape)
-        print(xyz.shape)
 
         x = tf.reshape(xyz[:, :, 0],[-1])
         y = tf.reshape(xyz[:, :, 1],[-1])
         z = tf.reshape(xyz[:, :, 2],[-1])
-
-        print(f"z shape {z.shape}")
 
         Yn = 100.0
         Zn = 108.883
@@ -68,12 +57,9 @@ class RGBToLabConverter(ColorConverter):
         #convert to tanh range [-1,1]
         l = ((l / 100) - 0.5) * 2
         a = (((a + 128) / 256) - 0.5) * 2
-        b = ((l / 100) - 0.5) * 2
-
+        b = (((b + 128) / 256) - 0.5) * 2
 
         lab_image = tf.reshape(tf.concat([l, a, b],axis=0),input_image.shape)
-        print(f"final shape {lab_image.shape}")
-
         return lab_image
 
 
