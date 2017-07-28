@@ -38,19 +38,15 @@ class RGBToLabConverter(ColorConverter):
             condition = tf.greater(t, (6 / 29) ** 3)
             return tf.where(condition, tf.pow(t,1/3),t / (3 * ((6 / 29) ** 2)) + 4 / 29)
 
-        rgb2xyz = tf.constant([[0.4124, 0.3576, 0.1805],
-                               [0.2126, 0.7152, 0.0722],
-                               [0.0193, 0.1192, 0.9505]], dtype=tf.float32)
-
-
-
-
-
-        # [B,512,512,3]*[3,3] ->
+        # convert from [-1,1] to [0,1]
+        input_image = (input_image + 1) / 2
+        # rgb must be in range[0,1]
+        rgb2xyz = tf.constant([[0.4124564, 0.3575761, 0.1804375],
+                               [0.2126729, 0.7151522, 0.0721750],
+                               [0.0193339, 0.1191920, 0.9503041]], dtype=tf.float32)
 
         print(f"multiplying { input_image.shape} with {rgb2xyz.shape}")
-
-        xyz = tf.matmul(tf.reshape(input_image,[-1,3]), rgb2xyz)
+        xyz = tf.matmul(rgb2xyz, tf.transpose(tf.reshape(input_image, [-1, 3]))) * 100
         xyz = tf.reshape(xyz,input_image.shape)
         print(xyz.shape)
 
@@ -67,10 +63,17 @@ class RGBToLabConverter(ColorConverter):
         a = 500 * (f(x / Xn) - f(y / Yn))
         b = 200 * (f(y / Yn) - f(z / Zn))
 
+        # l is in range [0,100[
+        # a,b are in range [-128,128]
+        #convert to tanh range [-1,1]
+        l = ((l / 100) - 0.5) * 2
+        a = (((a + 128) / 256) - 0.5) * 2
+        b = ((l / 100) - 0.5) * 2
+
+
         lab_image = tf.reshape(tf.concat([l, a, b],axis=0),input_image.shape)
         print(f"final shape {lab_image.shape}")
-        # l is in range [0,100[
-        # a is in range
+
         return lab_image
 
 
