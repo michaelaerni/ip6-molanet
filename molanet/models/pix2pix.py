@@ -55,13 +55,24 @@ class Pix2PixFactory(NetworkFactory):
                 filter_sizes = 4 if idx < layer_count - 1 else 5
                 feature_count = min(max_feature_count, min_feature_count * (2 ** encoder_index))\
                     if encoder_index >= 0 else 1
-                input_tensor, _, _ = self._conv2d_transpose(input_tensor, feature_count,
+
+                if idx < layer_count - 1:
+                    input_tensor, _, _ = self._resize_conv2d(input_tensor, feature_count,
                                                             target_layer_size,
-                                                            f"dec_{idx}", keep_probability, batch_size,
+                                                            f"dec_{idx}", keep_probability,
                                                             filter_size=filter_sizes,
                                                             concat_activations=encoder_activations[encoder_index] if encoder_index >= 0 else None,
                                                             use_batchnorm=use_batchnorm,
                                                             do_activation=do_activation)
+                else:
+                    input_tensor, _, _ = self._conv2d_transpose(input_tensor, feature_count,
+                                                                target_layer_size,
+                                                                f"dec_{idx}", keep_probability, batch_size,
+                                                                filter_size=filter_sizes,
+                                                                concat_activations=encoder_activations[
+                                                                    encoder_index] if encoder_index >= 0 else None,
+                                                                use_batchnorm=use_batchnorm,
+                                                                do_activation=do_activation)
 
             return tf.tanh(input_tensor, name="dec_activation")
 
@@ -122,6 +133,54 @@ class Pix2PixFactory(NetworkFactory):
         conv = tf.nn.bias_add(
             tf.nn.conv2d_transpose(features, w, output_shape=[batch_size, output_size, output_size, feature_count],
                                    strides=[1, 2, 2, 1], padding="SAME"), b)  # TODO: Padding?
+        if use_batchnorm:
+            bn = tf.contrib.layers.batch_norm(conv, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
+        else:
+            bn = conv
+        d = tf.nn.dropout(bn, keep_prob)
+
+        if do_activation:
+            a = tf.nn.relu(d)
+        else:
+            a = d
+
+        # Concat activations if available
+        if concat_activations is not None:
+            a = tf.concat([a, concat_activations], axis=3)
+
+        return a, w, b
+
+
+    def _resize_conv2d(self, features, feature_count, output_size, name, keep_prob, filter_size=5,
+                       concat_activations=None, use_batchnorm=True, do_activation=True):
+        """
+        this method assumes the features are of shape [B
+
+        See
+        https://distill.pub/2016/deconv-checkerboard/
+        Our experience has been that nearest-neighbor resize followed by a convolution works very well, in a wide variety of contexts.
+
+        tf.image.resize_images()
+        tf.pad()
+        tf.nn.conv2d()
+        """
+        # TODO resize_images distorts dimensions
+        # TODO fix by using tf.image.resize_image_with_crop_or_pad() but we NEED nearest neighbour (default is Bilinear)
+
+        # scale does not preserve aspect ration but NxN images should be fine
+        resized = tf.image.resize_nearest_neighbor(features, (output_size, output_size), name=f"{name}_resize")
+
+        # padding = tf.constant(output_size - (resized.get_shape().as_list()[1] * 2 - filter_size + 1))
+        # resized_padded = tf.cond(padding > 0, lambda: tf.image.pad_to_bounding_box(resized, padding, padding,
+        #                                                                            output_size +2*padding,
+        #                                                                            output_size +2*padding),
+        #                          lambda: resized)
+        # #TODO make sure resized_padded has the correct size now
+
+
+        conv, w, b = self._conv2d(resized, feature_count, f"{name}_conv2d", filter_size, use_batchnorm, stride=1,
+                                  do_activation=do_activation)
+
         if use_batchnorm:
             bn = tf.contrib.layers.batch_norm(conv, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
         else:
