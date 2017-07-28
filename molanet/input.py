@@ -27,8 +27,51 @@ class RGBToLabConverter(ColorConverter):
     """
     @staticmethod
     def convert(input_image: tf.Tensor) -> tf.Tensor:
-        # TODO: Patrick implement me plz
-        raise NotImplementedError("Patrick implement me plz")
+        print("convert called")
+
+        def fsfsdf(t):
+            print(t.shape)
+            return t ** (1 / 3) if t > (6 / 29) ** 3 \
+                else t / (3 * ((6 / 29) ** 2)) + 4 / 29
+
+        def f(t):
+            condition = tf.greater(t, (6 / 29) ** 3)
+            return tf.where(condition, tf.pow(t,1/3),t / (3 * ((6 / 29) ** 2)) + 4 / 29)
+
+        rgb2xyz = tf.constant([[0.4124, 0.3576, 0.1805],
+                               [0.2126, 0.7152, 0.0722],
+                               [0.0193, 0.1192, 0.9505]], dtype=tf.float32)
+
+
+
+
+
+        # [B,512,512,3]*[3,3] ->
+
+        print(f"multiplying { input_image.shape} with {rgb2xyz.shape}")
+
+        xyz = tf.matmul(tf.reshape(input_image,[-1,3]), rgb2xyz)
+        xyz = tf.reshape(xyz,input_image.shape)
+        print(xyz.shape)
+
+        x = tf.reshape(xyz[:, :, 0],[-1])
+        y = tf.reshape(xyz[:, :, 1],[-1])
+        z = tf.reshape(xyz[:, :, 2],[-1])
+
+        print(f"z shape {z.shape}")
+
+        Yn = 100.0
+        Zn = 108.883
+        Xn = 95.047
+        l = 116 * f(y / Yn) - 16
+        a = 500 * (f(x / Xn) - f(y / Yn))
+        b = 200 * (f(y / Yn) - f(z / Zn))
+
+        lab_image = tf.reshape(tf.concat([l, a, b],axis=0),input_image.shape)
+        print(f"final shape {lab_image.shape}")
+        # l is in range [0,100[
+        # a is in range
+        return lab_image
 
 
 class InputPipeline(object):
@@ -166,8 +209,8 @@ class TrainingPipeline(InputPipeline):
         image, segmentation = self._read_record(input_producer, self._compression_type)
 
         # Perform data augmentation
-        for augmentation_function in self._augmentation_pipeline:
-            image, segmentation = augmentation_function(image, segmentation)
+        #for augmentation_function in self._augmentation_pipeline:
+        # #   image, segmentation = augmentation_function(image, segmentation)
 
         # Perform color scheme conversion
         image = self._color_converter.convert(image)
