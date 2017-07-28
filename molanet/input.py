@@ -1,18 +1,54 @@
 import os
-from typing import Tuple, Callable, List
+from typing import Tuple, Callable, List, Optional
 
 import tensorflow as tf
 
 
+class ColorConverter(object):
+    """
+    Converts from a color space to another as a part of the input pipeline.
+    """
+
+    @staticmethod
+    def convert(input_image: tf.Tensor) -> tf.Tensor:
+        """
+        Converts a single image tensor from a color space to another.
+        This constructs graph operations.
+
+        :param input_image: Image in the original color scheme with values in tanh range [-1, 1] and shape [h, w, c]
+        :return: Tensor which represents the input image in the new color scheme
+        """
+        raise NotImplementedError("This method should be overridden by child classes")
+
+
+class RGBToLabConverter(ColorConverter):
+    """
+    Converter from RGB to CIE Lab color space.
+    """
+    @staticmethod
+    def convert(input_image: tf.Tensor) -> tf.Tensor:
+        # TODO: Patrick implement me plz
+        raise NotImplementedError("Patrick implement me plz")
+
+
 class InputPipeline(object):
+
+    class _NoopConverter(ColorConverter):
+        @staticmethod
+        def convert(input_image: tf.Tensor) -> tf.Tensor:
+            return input_image
+
     # TODO: This only supports fixed size images, make flexible to support arbitrary sizes
     # TODO: When using arbitrary shapes and they have to be batched, it has to be handled somehow
     # TODO: Refactor common functionality in all pipelines
 
-    def __init__(self, input_directory: str, data_set_name: str, image_size: int):
+    def __init__(self, input_directory: str, data_set_name: str, image_size: int,
+                 color_converter: Optional[ColorConverter] = None):
         if image_size < 1:
             raise ValueError("Image size must be bigger than 0")
         self._image_size = image_size
+
+        self._color_converter = color_converter if color_converter is not None else self._NoopConverter()
 
         # Some methods require absolute paths, sanitize it
         self._input_directory = os.path.abspath(input_directory)
@@ -71,6 +107,7 @@ class TrainingPipeline(InputPipeline):
             data_set_name: str,
             image_size: int,
             batch_size: int,
+            color_converter: Optional[ColorConverter] = None,
             augmentation_functions: List[Callable[[tf.Tensor, tf.Tensor], Tuple[tf.Tensor, tf.Tensor]]] = None,
             read_thread_count: int = 1,
             batch_thread_count: int = 1,
@@ -78,7 +115,7 @@ class TrainingPipeline(InputPipeline):
             compression_type: tf.python_io.TFRecordCompressionType = tf.python_io.TFRecordCompressionType.ZLIB,
             name: str = None
     ):
-        super().__init__(input_directory, data_set_name, image_size)
+        super().__init__(input_directory, data_set_name, image_size, color_converter)
 
         if batch_size < 1:
             raise ValueError("Batch sizes must at least contain one image")
@@ -132,6 +169,9 @@ class TrainingPipeline(InputPipeline):
         for augmentation_function in self._augmentation_pipeline:
             image, segmentation = augmentation_function(image, segmentation)
 
+        # Perform color scheme conversion
+        image = self._color_converter.convert(image)
+
         return image, segmentation
 
 
@@ -144,12 +184,13 @@ class EvaluationPipeline(InputPipeline):
             data_set_name: str,
             image_size: int,
             batch_size: int,
+            color_converter: Optional[ColorConverter] = None,
             batch_thread_count: int = 1,
             min_after_dequeue: int = 100,
             compression_type: tf.python_io.TFRecordCompressionType = tf.python_io.TFRecordCompressionType.ZLIB,
             name: str = None
     ):
-        super().__init__(input_directory, data_set_name, image_size)
+        super().__init__(input_directory, data_set_name, image_size, color_converter)
 
         if batch_size < 1:
             raise ValueError("Batch sizes must at least contain one image")
@@ -172,14 +213,17 @@ class EvaluationPipeline(InputPipeline):
             input_producer = tf.train.string_input_producer(self._file_paths, shuffle=False, name="filename_queue")
 
             # Read records, just one because the reads happen single threaded. Records are already in tanh range
-            parsed_sample = self._read_record(input_producer, self._compression_type)
+            parsed_image, parsed_segmentation = self._read_record(input_producer, self._compression_type)
+
+            # Perform color scheme conversion
+            parsed_image = self._color_converter.convert(parsed_image)
 
             # Calculate capacity using safety margin
             capacity = self._min_after_dequeue + self._batch_thread_count * self._batch_size
 
             # Join threads and batch values
             image_batch, segmentation_batch = tf.train.batch(
-                parsed_sample,
+                [parsed_image, parsed_segmentation],
                 self._batch_size,
                 self._batch_thread_count,
                 capacity,

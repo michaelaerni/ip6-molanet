@@ -7,7 +7,7 @@ import tensorflow as tf
 
 from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
-    EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb
+    EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb, RGBToLabConverter
 from molanet.models.pix2pix import Pix2PixFactory
 from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
 
@@ -26,6 +26,8 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logsubdir", action="store_true", help="Create a subdirectory in logdir for each new run")
     parser.add_argument("--discriminator-iterations", type=int, default=1, help="Number of discriminator iterations")
     parser.add_argument("--l1-lambda", type=int, default=0, help="Generator loss l1 lambda")
+    parser.add_argument("--convert-colors", action="store_true",
+                        help="If specified, converts the input images from RGB to CIE Lab color space")
     parser.add_argument("--max-iterations", type=int,
                         help="Maximum number of iterations before training stops")
     parser.add_argument("--xla", action="store_true",
@@ -57,12 +59,16 @@ if __name__ == "__main__":
         lambda image, segmentation: (random_brightness_rgb(image, -0.3, 0.3), segmentation)
     ]
 
+    color_converter = RGBToLabConverter() if args.convert_colors else None
+
     # Create input pipelines
     # TODO: Image size is hardcoded
     training_pipeline = TrainingPipeline(args.sampledir, args.train_set, image_size=512,
+                                         color_converter=color_converter,
                                          batch_size=1, read_thread_count=4, batch_thread_count=1,
                                          augmentation_functions=AUGMENTATION_FUNCTIONS, name="training")
     cv_pipeline = EvaluationPipeline(args.sampledir, args.cv_set, image_size=512,
+                                     color_converter=color_converter,
                                      batch_size=1, batch_thread_count=1, name="cv")
 
     print("Input pipelines created")
