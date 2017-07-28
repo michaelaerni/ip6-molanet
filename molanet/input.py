@@ -9,6 +9,8 @@ class ColorConverter(object):
     Converts from a color space to another as a part of the input pipeline.
     """
 
+    # TODO: Create convert_back method
+
     @staticmethod
     def convert(input_image: tf.Tensor) -> tf.Tensor:
         """
@@ -25,41 +27,44 @@ class RGBToLabConverter(ColorConverter):
     """
     Converter from RGB to CIE Lab color space.
     """
+
+    # TODO: Optimize
+
     @staticmethod
     def convert(input_image: tf.Tensor) -> tf.Tensor:
         def f(t):
-            condition = tf.greater(t, (6 / 29) ** 3)
-            return tf.where(condition, tf.pow(t,1/3),t / (3 * ((6 / 29) ** 2)) + 4 / 29)
+            condition = tf.greater(t, (6.0 / 29.0) ** 3)
+            return tf.where(condition, tf.pow(t, 1.0 / 3.0), t / (3.0 * ((6.0 / 29.0) ** 2.0)) + 4.0 / 29.0)
 
         # convert from [-1,1] to [0,1]
-        input_image = (input_image + 1) / 2
+        input_image = (input_image + 1.0) / 2.0
         # rgb must be in range[0,1]
         rgb2xyz = tf.constant([[0.4124564, 0.3575761, 0.1804375],
                                [0.2126729, 0.7151522, 0.0721750],
                                [0.0193339, 0.1191920, 0.9503041]], dtype=tf.float32)
 
-        xyz = tf.matmul(rgb2xyz, tf.transpose(tf.reshape(input_image, [-1, 3]))) * 100
-        xyz = tf.reshape(xyz,input_image.shape)
+        xyz = tf.matmul(rgb2xyz, tf.transpose(tf.reshape(input_image, [-1, 3]))) * 100.0
+        xyz = tf.reshape(tf.transpose(xyz), input_image.get_shape())
 
-        x = tf.reshape(xyz[:, :, 0],[-1])
-        y = tf.reshape(xyz[:, :, 1],[-1])
-        z = tf.reshape(xyz[:, :, 2],[-1])
+        x = tf.reshape(xyz[:, :, 0], [-1])
+        y = tf.reshape(xyz[:, :, 1], [-1])
+        z = tf.reshape(xyz[:, :, 2], [-1])
 
         Yn = 100.0
         Zn = 108.883
         Xn = 95.047
-        l = 116 * f(y / Yn) - 16
+        l = 116 * f(y / Yn) - 16.0
         a = 500 * (f(x / Xn) - f(y / Yn))
         b = 200 * (f(y / Yn) - f(z / Zn))
 
         # l is in range [0,100[
         # a,b are in range [-128,128]
-        #convert to tanh range [-1,1]
-        l = ((l / 100) - 0.5) * 2
-        a = (((a + 128) / 256) - 0.5) * 2
-        b = (((b + 128) / 256) - 0.5) * 2
+        # convert to tanh range [-1,1]
+        l = ((l / 100) - 0.5) * 2.0
+        a = (((a + 128) / 256) - 0.5) * 2.0
+        b = (((b + 128) / 256) - 0.5) * 2.0
 
-        lab_image = tf.reshape(tf.concat([l, a, b],axis=0),input_image.shape)
+        lab_image = tf.reshape(tf.stack([l, a, b], axis=1), input_image.get_shape())
         return lab_image
 
 
@@ -198,8 +203,8 @@ class TrainingPipeline(InputPipeline):
         image, segmentation = self._read_record(input_producer, self._compression_type)
 
         # Perform data augmentation
-        #for augmentation_function in self._augmentation_pipeline:
-        # #   image, segmentation = augmentation_function(image, segmentation)
+        for augmentation_function in self._augmentation_pipeline:
+           image, segmentation = augmentation_function(image, segmentation)
 
         # Perform color scheme conversion
         image = self._color_converter.convert(image)
