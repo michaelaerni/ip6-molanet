@@ -204,7 +204,7 @@ class TrainingPipeline(InputPipeline):
 
         # Perform data augmentation
         for augmentation_function in self._augmentation_pipeline:
-           image, segmentation = augmentation_function(image, segmentation)
+            image, segmentation = augmentation_function(image, segmentation)
 
         # Perform color scheme conversion
         image = self._color_converter.convert(image)
