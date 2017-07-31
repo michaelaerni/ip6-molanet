@@ -92,7 +92,7 @@ class InputPipeline(object):
         if not os.path.isdir(self._input_directory):
             raise ValueError(f"Input directory {self._input_directory} does not exist")
 
-        self._sample_directory = os.path.join(self._input_directory, data_set_name)
+        self._sample_directory = os.path.join(self._input_directory, "records")
         if not os.path.isdir(self._sample_directory):
             raise ValueError(f"Sample directory {self._sample_directory} does not exist")
 
