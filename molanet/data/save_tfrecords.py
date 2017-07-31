@@ -19,7 +19,7 @@ class RecordSaver(object):
                  rescale: bool = False):
 
         self._root_directory = os.path.abspath(root_directory)
-        self._target_directory = os.path.abspath(os.path.join(root_directory, data_set))
+        self._target_directory = os.path.abspath(os.path.join(root_directory, "records"))
         self._data_set = data_set
         self._options = TFRecordOptions(compression_type)
         self._rescale = rescale
