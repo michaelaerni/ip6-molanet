@@ -25,6 +25,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--debug-placement", action="store_true", help="Output device placement")
     parser.add_argument("--logsubdir", action="store_true", help="Create a subdirectory in logdir for each new run")
     parser.add_argument("--discriminator-iterations", type=int, default=1, help="Number of discriminator iterations")
+    parser.add_argument("--gradient-lambda", type=int, default=10, help="Discriminator gradient penalty lambda")
     parser.add_argument("--l1-lambda", type=int, default=0, help="Generator loss l1 lambda")
     parser.add_argument("--convert-colors", action="store_true",
                         help="If specified, converts the input images from RGB to CIE Lab color space")
@@ -83,12 +84,19 @@ if __name__ == "__main__":
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
         print("Enabled JIT XLA compilation")
 
-    network_factory = Pix2PixFactory(512)
+    network_factory = Pix2PixFactory(
+        spatial_extent=512,
+        min_generator_features=64,
+        min_discriminator_features=64,
+        max_generator_features=1024,
+        max_discriminator_features=1024,
+        use_batchnorm=False)
+
     trainer = NetworkTrainer(
         training_pipeline,
         cv_pipeline,
         network_factory,
-        WassersteinGradientPenaltyFactory(10, network_factory, l1_lambda=args.l1_lambda),
+        WassersteinGradientPenaltyFactory(args.gradient_lambda, network_factory, l1_lambda=args.l1_lambda),
         training_options=TrainingOptions(
             summary_directory=logdir,
             discriminator_iterations=args.discriminator_iterations,

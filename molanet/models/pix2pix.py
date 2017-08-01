@@ -11,6 +11,13 @@ class Pix2PixFactory(NetworkFactory):
     def __init__(
             self,
             spatial_extent: int,
+            min_generator_features: int = 32,
+            min_discriminator_features: int = 32,
+            max_generator_features: int = 512,
+            max_discriminator_features: int = 512,
+            dropout_keep_probability: float = 0.5,
+            dropout_layer_count: int = 2,
+            use_batchnorm: bool = True,
             weight_initializer=tf.truncated_normal_initializer(stddev=0.02)):
         import math
 
@@ -18,6 +25,13 @@ class Pix2PixFactory(NetworkFactory):
             raise ValueError("spatial_extent must be a power of 2")
 
         self._spatial_extent = spatial_extent
+        self._min_generator_features = min_generator_features
+        self._min_discriminator_features = min_discriminator_features
+        self._max_generator_features = max_generator_features
+        self._max_discriminator_features = max_discriminator_features
+        self._dropout_layer_count = dropout_layer_count
+        self._dropout_keep_probability = tf.constant(dropout_keep_probability)
+        self._use_batchnorm = use_batchnorm
         self._weight_initializer = weight_initializer
 
     def create_generator(self, x: tf.Tensor, reuse: bool = False) -> tf.Tensor:
@@ -25,20 +39,18 @@ class Pix2PixFactory(NetworkFactory):
             input_tensor = x
             encoder_activations = []
             layer_index = 0
-            min_feature_count = 32
-            feature_count = min_feature_count
-            max_feature_count = 512
+            feature_count = self._min_generator_features
             layer_size = self._spatial_extent
             batch_size = tf.shape(x)[0]
 
             # Encoder
             while layer_size > 1:
-                use_batchnorm = layer_index > 0 and layer_size // 2 > 1
+                use_batchnorm = self._use_batchnorm and (layer_index > 0 and layer_size // 2 > 1)
                 filter_sizes = 5 if layer_index == 0 else 4
                 input_tensor, _, _ = self._conv2d(input_tensor, feature_count, f"enc_{layer_index}",
                                                   filter_size=filter_sizes, use_batchnorm=use_batchnorm)
                 encoder_activations.append(input_tensor)
-                feature_count = min(max_feature_count, feature_count * 2)
+                feature_count = min(self._max_generator_features, feature_count * 2)
                 layer_size = layer_size // 2
                 layer_index += 1
 
@@ -47,13 +59,14 @@ class Pix2PixFactory(NetworkFactory):
             # Decoder
             # TODO: Initial image is not concatenated
             for idx in range(layer_count):
-                use_batchnorm = idx < layer_count - 1
-                keep_probability = tf.constant(0.5) if idx < 3 else tf.constant(1.0)  # TODO: When to use dropout
+                use_batchnorm = self._use_batchnorm and idx < layer_count - 1
+                keep_probability = self._dropout_keep_probability \
+                    if idx < self._dropout_layer_count else tf.constant(1.0)
                 encoder_index = layer_count - idx - 1 - 1
                 target_layer_size = 2 ** (idx + 1)
                 do_activation = encoder_index > 0
                 filter_sizes = 4 if idx < layer_count - 1 else 5
-                feature_count = min(max_feature_count, min_feature_count * (2 ** encoder_index))\
+                feature_count = min(self._max_generator_features, self._min_discriminator_features * (2 ** encoder_index))\
                     if encoder_index >= 0 else 1
                 input_tensor, _, _ = self._conv2d_transpose(input_tensor, feature_count,
                                                             target_layer_size,
@@ -75,8 +88,7 @@ class Pix2PixFactory(NetworkFactory):
             concatenated_input = tf.concat((x, y), axis=3)
             input_tensor = concatenated_input
             layer_size = self._spatial_extent
-            feature_count = 32
-            max_feature_count = 512
+            feature_count = self._min_discriminator_features
             layer_index = 0
 
             while layer_size > 1:
@@ -84,7 +96,7 @@ class Pix2PixFactory(NetworkFactory):
                 input_tensor, _, _ = self._conv2d(input_tensor, feature_count, str(layer_index), use_batchnorm=False,
                                                   filter_size=filter_sizes, do_activation=layer_size // 2 > 1)
                 layer_size = layer_size // 2
-                feature_count = min(max_feature_count, feature_count * 2) if layer_size // 2 > 1 else 1
+                feature_count = min(self._max_discriminator_features, feature_count * 2) if layer_size // 2 > 1 else 1
                 layer_index += 1
 
             if return_input_tensor:
