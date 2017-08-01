@@ -90,7 +90,9 @@ if __name__ == "__main__":
         min_discriminator_features=64,
         max_generator_features=1024,
         max_discriminator_features=1024,
-        use_batchnorm=False)
+        use_batchnorm=True,
+        dropout_layer_count=2
+    )
 
     trainer = NetworkTrainer(
         training_pipeline,
