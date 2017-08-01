@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 
 import tensorflow as tf
 
@@ -159,7 +159,7 @@ class Pix2PixLossFactory(ObjectiveFactory):
 
     def create_discriminator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
                                   generator_discriminator: tf.Tensor, real_discriminator: tf.Tensor,
-                                  apply_summary: bool = True) -> tf.Tensor:
+                                  apply_summary: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         loss_real = tf.reduce_mean(
             tf.nn.sigmoid_cross_entropy_with_logits(
                 logits=real_discriminator,
@@ -174,14 +174,19 @@ class Pix2PixLossFactory(ObjectiveFactory):
         loss = loss_real + loss_generated
 
         if apply_summary:
-            tf.summary.scalar("discriminator_loss", loss)
-            tf.summary.scalar("discriminator_loss_real", loss_real)
-            tf.summary.scalar("discriminator_loss_generated", loss_generated)
+            summary_ops = [
+                tf.summary.scalar("discriminator_loss", loss),
+                tf.summary.scalar("discriminator_loss_real", loss_real),
+                tf.summary.scalar("discriminator_loss_generated", loss_generated)
+            ]
 
-        return loss
+            return loss, summary_ops
+        else:
+            return loss
 
     def create_generator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
-                              generator_discriminator: tf.Tensor, apply_summary: bool = True) -> tf.Tensor:
+                              generator_discriminator: tf.Tensor,
+                              apply_summary: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         loss_discriminator = tf.reduce_mean(
             tf.nn.sigmoid_cross_entropy_with_logits(
                 logits=generator_discriminator,
@@ -192,8 +197,12 @@ class Pix2PixLossFactory(ObjectiveFactory):
         loss = loss_discriminator + self._l1_lambda * l1_loss
 
         if apply_summary:
-            tf.summary.scalar("generator_loss", loss)
-            tf.summary.scalar("generator_loss_discriminator", loss_discriminator)
-            tf.summary.scalar("generator_loss_l1_unscaled", l1_loss)
+            summary_ops = [
+                tf.summary.scalar("generator_loss", loss),
+                tf.summary.scalar("generator_loss_discriminator", loss_discriminator),
+                tf.summary.scalar("generator_loss_l1_unscaled", l1_loss)
+            ]
 
-        return loss
+            return loss, summary_ops
+        else:
+            return loss

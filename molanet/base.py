@@ -135,11 +135,15 @@ class NetworkTrainer(object):
             beta2: float = 0.999):
         self._training_options = training_options
 
+        # Create input pipelines
+        with tf.device("cpu:0"):
+            self._training_pipeline = training_pipeline
+            self._train_x, self._train_y = training_pipeline.create_pipeline()
+            self._cv_pipeline = cv_pipeline
+            self._cv_x, self._cv_y = self._cv_pipeline.create_pipeline()
+
         # Create training graph
         with tf.name_scope("training"):
-            with tf.device("cpu:0"):
-                self._training_pipeline = training_pipeline
-                self._train_x, self._train_y = training_pipeline.create_pipeline()
 
             # Create networks
             self._generator = network_factory.create_generator(self._train_x)
@@ -178,19 +182,15 @@ class NetworkTrainer(object):
 
             # TODO: Input pipeline summary is lost
 
+            self._train_saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
+
             # Merge summaries
             self._train_summary = tf.summary.merge(summary_operations + generator_summary + discriminator_summary)
             self._train_summary_writer = tf.summary.FileWriter(
-                self._training_options.summary_directory, filename_suffix="training", graph=tf.get_default_graph())
-
-            self._train_saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
+                os.path.join(self._training_options.summary_directory, "training"), graph=tf.get_default_graph())
 
         # Create CV graph
         with tf.name_scope("cv"):
-            with tf.device("cpu:0"):
-                self._cv_pipeline = cv_pipeline
-                self._cv_x, self._cv_y = self._cv_pipeline.create_pipeline()
-
             # Create networks
             generator = network_factory.create_generator(self._cv_x, reuse=True)
             discriminator_generated = network_factory.create_discriminator(self._cv_x, generator, reuse=True)
@@ -224,7 +224,7 @@ class NetworkTrainer(object):
             # Merge summaries
             self._cv_summary = tf.summary.merge(summary_operations + generator_summary + discriminator_summary)
             self._cv_summary_writer = tf.summary.FileWriter(
-                self._training_options.summary_directory, filename_suffix="cv")
+                os.path.join(self._training_options.summary_directory, "cv"))
 
     def __enter__(self):
         self._sess = tf.Session(config=self._training_options.session_configuration)
