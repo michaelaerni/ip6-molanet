@@ -276,17 +276,18 @@ class NetworkTrainer(object):
 
                     # TODO: Make configurable?
                     IMAGE_OUTPUT_COUNT = 5
+                    image_output_iterations = min(IMAGE_OUTPUT_COUNT, self._cv_pipeline.sample_count)
 
                     # Generate individual summaries
                     cv_summaries = []
                     cv_images = []
-                    for _ in range(IMAGE_OUTPUT_COUNT):
+                    for _ in range(image_output_iterations):
                         current_summary, current_image = self._sess.run(
                             (self._cv_summary, self._concatenated_images_op))
                         cv_summaries.append(current_summary)
                         cv_images.append(current_image)
 
-                    for _ in range(IMAGE_OUTPUT_COUNT, self._cv_pipeline.sample_count):
+                    for _ in range(image_output_iterations, self._cv_pipeline.sample_count):
                         cv_summaries.append(self._sess.run(self._cv_summary))
 
                     # Convert summaries into numpy array and calculate the average for all tags
