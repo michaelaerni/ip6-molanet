@@ -3,6 +3,7 @@ from typing import List, Tuple, Union
 import tensorflow as tf
 
 from molanet.base import ObjectiveFactory, NetworkFactory
+from molanet.operations import use_cpu, select_device
 
 
 class WassersteinGradientPenaltyFactory(ObjectiveFactory):
@@ -15,33 +16,39 @@ class WassersteinGradientPenaltyFactory(ObjectiveFactory):
 
     def create_discriminator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
                                   generator_discriminator: tf.Tensor, real_discriminator: tf.Tensor,
-                                  apply_summary: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
-        batch_size = tf.shape(x)[0]
-        epsilons = tf.random_uniform((batch_size,), 0.0, 1.0, seed=self._seed)
+                                  apply_summary: bool = True,
+                                  use_gpu: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
+        with use_cpu():
+            batch_size = tf.shape(x)[0]
+            epsilons = tf.random_uniform((batch_size,), 0.0, 1.0, seed=self._seed)
 
-        gradient_input = tf.multiply(epsilons, y) + tf.multiply(tf.ones_like(epsilons) - epsilons, generator)
-        gradient_discriminator, gradient_discriminator_input = self._network_factory.create_discriminator(
-            x,
-            gradient_input,
-            reuse=True,
-            return_input_tensor=True)
+            gradient_input = tf.multiply(epsilons, y) + tf.multiply(tf.ones_like(epsilons) - epsilons, generator)
 
-        gradient = tf.gradients(gradient_discriminator, gradient_discriminator_input)
-        gradient_norm = tf.norm(gradient)
-        gradient_penalty = tf.multiply(tf.constant(self._gradient_lambda, dtype=tf.float32),
-                                       tf.reduce_mean((gradient_norm - tf.ones_like(gradient_norm)) ** 2))
+        with tf.device(select_device(use_gpu)):
+            gradient_discriminator, gradient_discriminator_input = self._network_factory.create_discriminator(
+                x,
+                gradient_input,
+                reuse=True,
+                return_input_tensor=True,
+                use_gpu=use_gpu)
 
-        loss_generated = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-            logits=generator_discriminator,
-            labels=tf.zeros_like(generator_discriminator)
-        ))
+            loss_generated = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                logits=generator_discriminator,
+                labels=tf.zeros_like(generator_discriminator)
+            ))
 
-        loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-            logits=real_discriminator,
-            labels=tf.ones_like(real_discriminator)
-        ))
+            loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                logits=real_discriminator,
+                labels=tf.ones_like(real_discriminator)
+            ))
 
-        loss = loss_generated + loss_real + gradient_penalty
+            gradient = tf.gradients(gradient_discriminator, gradient_discriminator_input)
+            gradient_norm = tf.norm(gradient)
+            gradient_penalty_raw = tf.reduce_mean((gradient_norm - tf.ones_like(gradient_norm)) ** 2)
+
+        with use_cpu():
+            gradient_penalty = tf.multiply(tf.constant(self._gradient_lambda, dtype=tf.float32), gradient_penalty_raw)
+            loss = loss_generated + loss_real + gradient_penalty
 
         if apply_summary:
             summary_operations = [
@@ -57,24 +64,26 @@ class WassersteinGradientPenaltyFactory(ObjectiveFactory):
             return loss
 
     def create_generator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
-                              generator_discriminator: tf.Tensor, apply_summary: bool = True
-                              ) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
-        loss = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(
-                logits=generator_discriminator,
-                labels=tf.ones_like(generator_discriminator))
-        )
-
+                              generator_discriminator: tf.Tensor, apply_summary: bool = True,
+                              use_gpu: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         summary_ops = []
 
-        if self._l1_lambda > 0.0:
-            l1_loss = tf.reduce_mean(tf.abs(tf.subtract(y, generator)))
+        with tf.device(select_device(use_gpu)):
+            loss = tf.reduce_mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=generator_discriminator,
+                    labels=tf.ones_like(generator_discriminator))
+            )
 
-            if apply_summary:
-                summary_ops.append(tf.summary.scalar("generator_loss_l1", l1_loss))
-                summary_ops.append(tf.summary.scalar("generator_loss_discriminator", loss))
+            if self._l1_lambda > 0.0:
+                l1_loss = tf.reduce_mean(tf.abs(tf.subtract(y, generator)))
 
-            loss = loss + tf.constant(self._l1_lambda, dtype=tf.float32) * l1_loss
+                with use_cpu():
+                    if apply_summary:
+                        summary_ops.append(tf.summary.scalar("generator_loss_l1", l1_loss))
+                        summary_ops.append(tf.summary.scalar("generator_loss_discriminator", loss))
+
+                    loss = loss + tf.constant(self._l1_lambda, dtype=tf.float32) * l1_loss
 
         if apply_summary:
             summary_ops.append(tf.summary.scalar("generator_loss", loss))

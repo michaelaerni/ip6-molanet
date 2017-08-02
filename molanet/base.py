@@ -6,6 +6,7 @@ import tensorflow as tf
 from PIL import Image
 
 from molanet.input import InputPipeline
+from molanet.operations import use_cpu, select_device
 
 
 class NetworkFactory(object):
@@ -21,12 +22,14 @@ class NetworkFactory(object):
             self,
             x: tf.Tensor,
             reuse: bool = False,
+            use_gpu: bool = True
     ) -> tf.Tensor:
         """
         Creates a generator network and optionally applies summary options where useful.
 
         :param x: Input for the created generator
         :param reuse: If False, the weights cannot exist yet, if True they will be reused. Defaults to False.
+        :param use_gpu: If True, operations will be created on the gpu. Defaults to True.
         :return: Output tensor of the created generator
         """
 
@@ -37,7 +40,8 @@ class NetworkFactory(object):
             x: tf.Tensor,
             y: tf.Tensor,
             reuse: bool = False,
-            return_input_tensor: bool = False
+            return_input_tensor: bool = False,
+            use_gpu: bool = True
     ) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
         """
         Creates a discriminator network and optionally applies summary options where useful.
@@ -47,6 +51,7 @@ class NetworkFactory(object):
         :param reuse: If False, the weights cannot exist yet, if True they will be reused. Defaults to False.
         :param return_input_tensor: If True, the concatenated input tensor which is fed to the network is returned too.
         Defaults to False.
+        :param use_gpu: If True, operations will be created on the gpu. Defaults to True.
         :return: Output tensor of the created discriminator as unscaled logits. If return_input_tensor is set to True,
         the concatenated input tensor which is feed to the network is returned too.
         """
@@ -69,7 +74,8 @@ class ObjectiveFactory(object):
             y: tf.Tensor,
             generator: tf.Tensor,
             generator_discriminator: tf.Tensor,
-            apply_summary: bool = True
+            apply_summary: bool = True,
+            use_gpu: bool = True
     ) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         """
         Creates the generator loss function and optionally applies summary options.
@@ -80,6 +86,7 @@ class ObjectiveFactory(object):
         :param generator: Generated output for the given x
         :param generator_discriminator: Discriminator logits for the generated output corresponding to the x
         :param apply_summary: If True, summary operations will be added to the graph. Defaults to True.
+        :param use_gpu: If True, operations will be created on the gpu. Defaults to True.
         :return: Loss function for the generator which can be used for optimization and if specified summary ops
         """
 
@@ -92,7 +99,8 @@ class ObjectiveFactory(object):
             generator: tf.Tensor,
             generator_discriminator: tf.Tensor,
             real_discriminator: tf.Tensor,
-            apply_summary: bool = True
+            apply_summary: bool = True,
+            use_gpu: bool = True
     ) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         """
         Creates the discriminator loss function and optionally applies summary options.
@@ -104,6 +112,7 @@ class ObjectiveFactory(object):
         :param generator_discriminator: Discriminator logits for the generated output corresponding to the x
         :param real_discriminator: Discriminator logits for the ground truth output
         :param apply_summary: If True, summary operations will be added to the graph. Defaults to True.
+        :param use_gpu: If True, operations will be created on the gpu. Defaults to True.
         :return: Loss function for the discriminator which can be used for optimization and if specified summary ops
         """
 
@@ -118,6 +127,7 @@ class TrainingOptions(NamedTuple):
     save_model_interval: int = 1000
     discriminator_iterations: int = 1
     session_configuration: tf.ConfigProto = None
+    use_gpu: bool = True
 
 
 class NetworkTrainer(object):
@@ -136,7 +146,7 @@ class NetworkTrainer(object):
         self._training_options = training_options
 
         # Create input pipelines
-        with tf.device("cpu:0"):
+        with use_cpu():
             self._training_pipeline = training_pipeline
             self._train_x, self._train_y = training_pipeline.create_pipeline()
             self._cv_pipeline = cv_pipeline
@@ -146,30 +156,37 @@ class NetworkTrainer(object):
         with tf.name_scope("training"):
 
             # Create networks
-            self._generator = network_factory.create_generator(self._train_x)
-            self._discriminator_generated = network_factory.create_discriminator(self._train_x, self._generator)
-            self._discriminator_real = network_factory.create_discriminator(self._train_x, self._train_y, reuse=True)
+            self._generator = network_factory.create_generator(self._train_x, use_gpu=self._training_options.use_gpu)
+            self._discriminator_generated = network_factory.create_discriminator(
+                self._train_x, self._generator, use_gpu=self._training_options.use_gpu)
+            self._discriminator_real = network_factory.create_discriminator(
+                self._train_x, self._train_y, reuse=True, use_gpu=self._training_options.use_gpu)
 
             # Create losses
             self._generator_loss, generator_summary = objective_factory.create_generator_loss(
-                self._train_x, self._train_y, self._generator, self._discriminator_generated)
+                self._train_x, self._train_y,
+                self._generator, self._discriminator_generated, use_gpu=self._training_options.use_gpu)
             self._discriminator_loss, discriminator_summary = objective_factory.create_discriminator_loss(
-                self._train_x, self._train_y, self._generator, self._discriminator_generated, self._discriminator_real)
+                self._train_x, self._train_y,
+                self._generator, self._discriminator_generated, self._discriminator_real,
+                use_gpu=self._training_options.use_gpu)
 
-            # Create optimizers
-            trainable_variables = tf.trainable_variables()
-            variables_discriminator = [var for var in trainable_variables if var.name.startswith("discriminator")]
-            variables_generator = [var for var in trainable_variables if var.name.startswith("generator")]
+            with tf.device(select_device(self._training_options.use_gpu)):
+                # Create optimizers
+                trainable_variables = tf.trainable_variables()
+                variables_discriminator = [var for var in trainable_variables if var.name.startswith("discriminator")]
+                variables_generator = [var for var in trainable_variables if var.name.startswith("generator")]
 
-            self._optimizer_generator = tf.train.AdamOptimizer(learning_rate, beta1, beta2, name="adam_generator")
-            self._optimizer_discriminator = tf.train.AdamOptimizer(learning_rate, beta1, beta2, name="adam_discriminator")
+                self._optimizer_generator = tf.train.AdamOptimizer(learning_rate, beta1, beta2, name="adam_generator")
+                self._optimizer_discriminator = tf.train.AdamOptimizer(learning_rate, beta1, beta2, name="adam_discriminator")
 
-            self._op_generator = self._optimizer_generator.minimize(self._generator_loss, var_list=variables_generator)
-            self._op_discriminator = self._optimizer_discriminator.minimize(self._discriminator_loss, var_list=variables_discriminator)
+                self._op_generator = self._optimizer_generator.minimize(self._generator_loss, var_list=variables_generator)
+                self._op_discriminator = self._optimizer_discriminator.minimize(self._discriminator_loss, var_list=variables_discriminator)
 
-            # Iteration counter
-            self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.int64)
-            self._step_op = tf.assign_add(self._global_step, 1)
+            with use_cpu():
+                # Iteration counter
+                self._global_step = tf.Variable(0, trainable=False, name="global_step", dtype=tf.int64)
+                self._step_op = tf.assign_add(self._global_step, 1)
 
             # Create summary operation
             accuracy, precision, recall, f1_score = self._create_summaries(self._generator, self._train_y)
@@ -192,15 +209,19 @@ class NetworkTrainer(object):
         # Create CV graph
         with tf.name_scope("cv"):
             # Create networks
-            generator = network_factory.create_generator(self._cv_x, reuse=True)
-            discriminator_generated = network_factory.create_discriminator(self._cv_x, generator, reuse=True)
-            discriminator_real = network_factory.create_discriminator(self._cv_x, self._cv_y, reuse=True)
+            generator = network_factory.create_generator(
+                self._cv_x, reuse=True, use_gpu=self._training_options.use_gpu)
+            discriminator_generated = network_factory.create_discriminator(
+                self._cv_x, generator, reuse=True, use_gpu=self._training_options.use_gpu)
+            discriminator_real = network_factory.create_discriminator(
+                self._cv_x, self._cv_y, reuse=True, use_gpu=self._training_options.use_gpu)
 
             # Create losses
             _, generator_summary = objective_factory.create_generator_loss(
-                self._cv_x, self._cv_y, generator, discriminator_generated)
+                self._cv_x, self._cv_y, generator, discriminator_generated, use_gpu=self._training_options.use_gpu)
             _, discriminator_summary = objective_factory.create_discriminator_loss(
-                self._cv_x, self._cv_y, generator, discriminator_generated, discriminator_real)
+                self._cv_x, self._cv_y, generator, discriminator_generated, discriminator_real,
+                use_gpu=self._training_options.use_gpu)
 
             # Create other summary options
             accuracy, precision, recall, f1_score = self._create_summaries(generator, self._cv_y)
@@ -213,13 +234,14 @@ class NetworkTrainer(object):
                 tf.summary.scalar("f1_score", f1_score)
             ]
 
-            # Concatenated images
-            self._concatenated_images_op = tf.cast(tf.round(tf.concat([
-                (self._cv_x + 1.0) / 2.0 * 255.0,
-                tf.tile((self._cv_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-                tf.tile((generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-                tf.tile(tf.abs(tf.subtract(generator, self._cv_y)), multiples=[1, 1, 1, 3]) * 255.0
-            ], axis=2)), dtype=tf.uint8)
+            with use_cpu():
+                # Concatenated images
+                self._concatenated_images_op = tf.cast(tf.round(tf.concat([
+                    (self._cv_x + 1.0) / 2.0 * 255.0,
+                    tf.tile((self._cv_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+                    tf.tile((generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+                    tf.tile(tf.abs(tf.subtract(generator, self._cv_y)), multiples=[1, 1, 1, 3]) * 255.0
+                ], axis=2)), dtype=tf.uint8)
 
             # Merge summaries
             self._cv_summary = tf.summary.merge(summary_operations + generator_summary + discriminator_summary)
@@ -251,7 +273,8 @@ class NetworkTrainer(object):
         if not os.path.exists(save_image_path):
             os.makedirs(save_image_path)
 
-        init_ops = (tf.global_variables_initializer(), tf.local_variables_initializer())
+        with tf.device(select_device(self._training_options.use_gpu)):
+            init_ops = (tf.global_variables_initializer(), tf.local_variables_initializer())
 
         tf.get_default_graph().finalize()
 

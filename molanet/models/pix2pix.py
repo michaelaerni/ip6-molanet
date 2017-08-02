@@ -3,7 +3,7 @@ from typing import Union, Tuple, List
 import tensorflow as tf
 
 from molanet.base import NetworkFactory, ObjectiveFactory
-from molanet.operations import leaky_relu
+from molanet.operations import leaky_relu, select_device
 
 
 class Pix2PixFactory(NetworkFactory):
@@ -34,8 +34,8 @@ class Pix2PixFactory(NetworkFactory):
         self._use_batchnorm = use_batchnorm
         self._weight_initializer = weight_initializer
 
-    def create_generator(self, x: tf.Tensor, reuse: bool = False) -> tf.Tensor:
-        with tf.variable_scope("generator", reuse=reuse):
+    def create_generator(self, x: tf.Tensor, reuse: bool = False, use_gpu: bool = True) -> tf.Tensor:
+        with tf.variable_scope("generator", reuse=reuse), tf.device(select_device(use_gpu)):
             input_tensor = x
             encoder_activations = []
             layer_index = 0
@@ -83,8 +83,8 @@ class Pix2PixFactory(NetworkFactory):
             x: tf.Tensor,
             y: tf.Tensor,
             reuse: bool = False,
-            return_input_tensor: bool = False) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
-        with tf.variable_scope("discriminator", reuse=reuse):
+            return_input_tensor: bool = False, use_gpu: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
+        with tf.variable_scope("discriminator", reuse=reuse), tf.device(select_device(use_gpu)):
             concatenated_input = tf.concat((x, y), axis=3)
             input_tensor = concatenated_input
             layer_size = self._spatial_extent
@@ -159,17 +159,19 @@ class Pix2PixLossFactory(ObjectiveFactory):
 
     def create_discriminator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
                                   generator_discriminator: tf.Tensor, real_discriminator: tf.Tensor,
-                                  apply_summary: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
-        loss_real = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(
-                logits=real_discriminator,
-                labels=tf.ones_like(generator_discriminator))
-        )
-        loss_generated = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(
-                logits=generator_discriminator,
-                labels=tf.zeros_like(generator_discriminator))
-        )
+                                  apply_summary: bool = True,
+                                  use_gpu: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
+        with tf.device(select_device(use_gpu)):
+            loss_real = tf.reduce_mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=real_discriminator,
+                    labels=tf.ones_like(generator_discriminator))
+            )
+            loss_generated = tf.reduce_mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=generator_discriminator,
+                    labels=tf.zeros_like(generator_discriminator))
+            )
 
         loss = loss_real + loss_generated
 
@@ -186,13 +188,15 @@ class Pix2PixLossFactory(ObjectiveFactory):
 
     def create_generator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
                               generator_discriminator: tf.Tensor,
-                              apply_summary: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
-        loss_discriminator = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(
-                logits=generator_discriminator,
-                labels=tf.ones_like(generator_discriminator))
-        )
-        l1_loss = tf.reduce_mean(tf.abs(tf.subtract(y, generator)))
+                              apply_summary: bool = True,
+                              use_gpu: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
+        with tf.device(select_device(use_gpu)):
+            loss_discriminator = tf.reduce_mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=generator_discriminator,
+                    labels=tf.ones_like(generator_discriminator))
+            )
+            l1_loss = tf.reduce_mean(tf.abs(tf.subtract(y, generator)))
 
         loss = loss_discriminator + self._l1_lambda * l1_loss
 

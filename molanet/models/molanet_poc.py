@@ -103,7 +103,8 @@ if __name__ == "__main__":
             summary_directory=logdir,
             discriminator_iterations=args.discriminator_iterations,
             max_iterations=args.max_iterations,
-            session_configuration=config),
+            session_configuration=config,
+            use_gpu=True),
         learning_rate=0.0001, beta1=0, beta2=0.9)
     print("Trainer created")
 
