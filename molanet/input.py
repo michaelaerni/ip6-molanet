@@ -22,12 +22,22 @@ class ColorConverter(object):
         """
         raise NotImplementedError("This method should be overridden by child classes")
 
+    @staticmethod
+    def convert_back(input_image: tf.Tensor) -> tf.Tensor:
+        """
+        Converts a single image tensor from the target color space back to the source space.
+        This constructs graph operations.
+
+        :param input_image: Image in the target color scheme with values in tanh range [-1, 1] and shape [h, w, c]
+        :return: Tensor which represents the input image in the original scheme
+        """
+        raise NotImplementedError("This method should be overridden by child classes")
+
 
 class RGBToLabConverter(ColorConverter):
     """
     Converter from RGB to CIE Lab color space.
     """
-
     # TODO: Optimize
 
     @staticmethod
@@ -67,10 +77,19 @@ class RGBToLabConverter(ColorConverter):
         lab_image = tf.reshape(tf.stack([l, a, b], axis=1), input_image.get_shape())
         return lab_image
 
+    @staticmethod
+    def convert_back(input_image: tf.Tensor) -> tf.Tensor:
+        # TODO: Patrick implement me plz
+        raise NotImplementedError("Patrick please implement")
+
 
 class InputPipeline(object):
 
     class _NoopConverter(ColorConverter):
+        @staticmethod
+        def convert_back(input_image: tf.Tensor) -> tf.Tensor:
+            return input_image
+
         @staticmethod
         def convert(input_image: tf.Tensor) -> tf.Tensor:
             return input_image
@@ -110,6 +129,10 @@ class InputPipeline(object):
     @property
     def sample_count(self) -> int:
         return len(self._file_paths)
+
+    @property
+    def color_converter(self):
+        return self._color_converter
 
     @staticmethod
     def _path_from_uuid(sample_directory: str, uuid: str) -> str:

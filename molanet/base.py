@@ -237,7 +237,7 @@ class NetworkTrainer(object):
             with use_cpu():
                 # Concatenated images
                 self._concatenated_images_op = tf.cast(tf.round(tf.concat([
-                    (self._cv_x + 1.0) / 2.0 * 255.0,
+                    (self._cv_pipeline.color_converter.convert_back(self._cv_x) + 1.0) / 2.0 * 255.0,
                     tf.tile((self._cv_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
                     tf.tile((generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
                     tf.tile(tf.abs(tf.subtract(generator, self._cv_y)), multiples=[1, 1, 1, 3]) * 255.0
