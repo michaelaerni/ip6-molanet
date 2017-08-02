@@ -97,7 +97,7 @@ def contains_plaster(image: np.ndarray, minConfidence: float = 0.4, debug=False)
         isNonSkinConfidence = max(1.0 - (cbSkin / cb), 1.0 - (crSkin / cr))
 
         # sometimes there are huge white areas which would be classified as non skin
-        # if they are non-skin then Cr Cb are very close and Y is high
+        # if they are skin then Cr Cb are very close and Y is high
 
         if np.abs(avgCb - avgCr) < 6 or \
                 ((avgY > 155 or avgY < 50) and np.abs(avgCb - avgCr) < 35):  isNonSkinConfidence = 0
