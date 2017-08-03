@@ -1,7 +1,10 @@
+import csv
+import ntpath
 import os
 from typing import Union, Tuple, NamedTuple, List
 
 import numpy as np
+import shutil
 import tensorflow as tf
 from PIL import Image
 
@@ -119,6 +122,28 @@ class ObjectiveFactory(object):
         raise NotImplementedError("This method should be overridden by child classes")
 
 
+def _create_summaries(generator: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+    generated_classes = tf.round((generator + 1.0) / 2.0)
+    real_classes = (y + 1.0) / 2.0
+    generated_positives = tf.reduce_sum(generated_classes)
+    real_positives = tf.reduce_sum(real_classes)
+
+    accuracy = tf.reduce_mean(tf.cast(tf.equal(generated_classes, real_classes), dtype=tf.float32))
+    true_positives = tf.reduce_sum(tf.cast(
+        tf.logical_and(
+            tf.equal(real_classes, tf.ones_like(real_classes)),
+            tf.equal(generated_classes, real_classes)),
+        dtype=tf.float32))
+    # TODO: Zero handling in precision, recall and f1 are a bit wonky, discuss and fix this
+    precision = tf.cond(generated_positives > 0, lambda: true_positives / generated_positives, lambda: 1.0)
+    recall = tf.cond(real_positives > 0, lambda: true_positives / real_positives, lambda: 1.0)
+    f1_score = tf.cond(tf.logical_and(precision > 0, recall > 0),
+                       lambda: 2.0 * precision * recall / (precision + recall),
+                       lambda: 0.0)
+
+    return accuracy, precision, recall, f1_score
+
+
 class TrainingOptions(NamedTuple):
     summary_directory: str
     max_iterations: int
@@ -189,7 +214,7 @@ class NetworkTrainer(object):
                 self._step_op = tf.assign_add(self._global_step, 1)
 
             # Create summary operation
-            accuracy, precision, recall, f1_score = self._create_summaries(self._generator, self._train_y)
+            accuracy, precision, recall, f1_score = _create_summaries(self._generator, self._train_y)
             summary_operations = [
                 tf.summary.scalar("accuracy", accuracy),
                 tf.summary.scalar("precision", precision),
@@ -224,7 +249,7 @@ class NetworkTrainer(object):
                 use_gpu=self._training_options.use_gpu)
 
             # Create other summary options
-            accuracy, precision, recall, f1_score = self._create_summaries(generator, self._cv_y)
+            accuracy, precision, recall, f1_score = _create_summaries(generator, self._cv_y)
 
             # Create summary operation
             summary_operations = [
@@ -378,24 +403,141 @@ class NetworkTrainer(object):
 
         self._train_saver.restore(self._sess, os.path.join(self._training_options.summary_directory, f"model.ckpt-{iteration}"))
 
-    @staticmethod
-    def _create_summaries(generator: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-        generated_classes = tf.round((generator + 1.0) / 2.0)
-        real_classes = (y + 1.0) / 2.0
-        generated_positives = tf.reduce_sum(generated_classes)
-        real_positives = tf.reduce_sum(real_classes)
 
-        accuracy = tf.reduce_mean(tf.cast(tf.equal(generated_classes, real_classes), dtype=tf.float32))
-        true_positives = tf.reduce_sum(tf.cast(
-            tf.logical_and(
-                tf.equal(real_classes, tf.ones_like(real_classes)),
-                tf.equal(generated_classes, real_classes)),
-            dtype=tf.float32))
-        # TODO: Zero handling in precision, recall and f1 are a bit wonky, discuss and fix this
-        precision = tf.cond(generated_positives > 0, lambda: true_positives / generated_positives, lambda: 1.0)
-        recall = tf.cond(real_positives > 0, lambda: true_positives / real_positives, lambda: 1.0)
-        f1_score = tf.cond(tf.logical_and(precision > 0, recall > 0),
-                           lambda: 2.0 * precision * recall / (precision + recall),
-                           lambda: 0.0)
+class NetworkEvaluator(object):
+    def __init__(
+            self,
+            pipeline: InputPipeline,
+            network_factory: NetworkFactory,
+            checkpoint_file: str,
+            output_directory: str,
+            use_gpu: bool = False
+    ):
+        # TODO: Assert batch_size == 1
+        self._pipeline = pipeline
 
-        return accuracy, precision, recall, f1_score
+        self._checkpoint_file = checkpoint_file
+
+        self._output_directory = os.path.abspath(output_directory)
+        self._image_directory = os.path.join(self._output_directory, "images")
+        self._output_file = os.path.join(self._output_directory, "results.csv")
+
+        # Create graph
+        with use_cpu():
+            self._x, self._y, self._file_names = self._pipeline.create_pipeline()
+
+        # Create networks
+        generator = network_factory.create_generator(self._x, use_gpu=use_gpu)
+        # discriminator_generated = network_factory.create_discriminator(self._x, generator, use_gpu=use_gpu)
+        # discriminator_real = network_factory.create_discriminator(self._x, self._y, reuse=True, use_gpu=use_gpu)
+
+        # TODO: Refactor loss output in a way that objective can also be evaluated
+
+        with use_cpu():
+            # Create basic summary
+            self._accuracy, self._precision, self._recall, self._f1_score = _create_summaries(generator, self._y)
+
+            # Concatenated images
+            self._concatenated_images = tf.cast(tf.round(tf.concat([
+                (self._pipeline.color_converter.convert_back(self._x) + 1.0) / 2.0 * 255.0,
+                tf.tile((self._y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+                tf.tile((generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+                tf.tile(tf.abs(tf.subtract(generator, self._y)), multiples=[1, 1, 1, 3]) * 255.0
+            ], axis=2)), dtype=tf.uint8)
+
+        self._saver = tf.train.Saver()
+
+        tf.get_default_graph().finalize()
+
+    def __enter__(self):
+        self._sess = tf.Session()
+
+        self._saver.restore(self._sess, self._checkpoint_file)
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._sess.close()
+        self._sess = None
+
+    def evaluate(self):
+        # Start input enqueue threads.
+        coord = tf.train.Coordinator()
+        print("Starting queue runners...")
+        threads = tf.train.start_queue_runners(sess=self._sess, coord=coord)
+
+        # Prepare output directory
+        if os.path.exists(self._output_directory):
+            shutil.rmtree(self._output_directory, ignore_errors=True)
+        os.makedirs(self._output_directory)
+        os.makedirs(self._image_directory)
+
+        print("Starting evaluation")
+
+        sample_ids = []
+        evaluation_numbers = np.zeros((self._pipeline.sample_count, 4))
+
+        ops = [
+            self._accuracy,
+            self._precision,
+            self._recall,
+            self._f1_score,
+            self._file_names,
+            self._concatenated_images
+        ]
+
+        try:
+            while not coord.should_stop():
+                for idx in range(self._pipeline.sample_count):
+                    accuracy, precision, recall, f1_score, work_item, image = self._sess.run(ops)
+
+                    # Convert work item to path, remove offset counter at the end and file extension
+                    file_path, _ = os.path.splitext(work_item[0].decode("UTF-8").split(":")[-2])
+                    sample_id = ntpath.basename(file_path)
+
+                    # Store summary numbers
+                    sample_ids.append(sample_id)
+                    evaluation_numbers[idx, 0] = accuracy
+                    evaluation_numbers[idx, 1] = precision
+                    evaluation_numbers[idx, 2] = recall
+                    evaluation_numbers[idx, 3] = f1_score
+
+                    # Save image
+                    output_image = np.reshape(image, (512, 512 * 4, 3))  # TODO: Remove fixed size
+                    Image.fromarray(output_image, "RGB").save(
+                        os.path.join(self._image_directory, f"{sample_id}.png"))
+
+                    print(f"[{idx + 1}] Evaluated {sample_id}")
+
+                coord.request_stop()
+
+        except Exception as ex:
+            coord.request_stop(ex)
+        finally:
+            coord.request_stop()
+
+            print("Waiting for threads to finish...")
+            coord.join(threads)
+
+        with open(self._output_file, "w", newline="") as f:
+            writer = csv.writer(f, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(["uuid", "segmentation_id", "accuarcy", "precision", "recall", "f1_score"])
+
+            for idx, sample_id in enumerate(sample_ids):
+                uuid, segmentation_id = sample_id.split("_")
+                writer.writerow([
+                    uuid,
+                    segmentation_id,
+                    evaluation_numbers[idx, 0],
+                    evaluation_numbers[idx, 1],
+                    evaluation_numbers[idx, 2],
+                    evaluation_numbers[idx, 3]
+                ])
+
+        # Generate overall summary
+        total_accuracy, total_precision, total_recall, total_f1_score = np.mean(evaluation_numbers, axis=0)
+        print("Evaluation done")
+        print("Average accuracy:", total_accuracy)
+        print("Average precision:", total_precision)
+        print("Average recall:", total_recall)
+        print("Average f1 score:", total_f1_score)
