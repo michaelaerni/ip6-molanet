@@ -148,9 +148,9 @@ class NetworkTrainer(object):
         # Create input pipelines
         with use_cpu():
             self._training_pipeline = training_pipeline
-            self._train_x, self._train_y = training_pipeline.create_pipeline()
+            self._train_x, self._train_y, _ = training_pipeline.create_pipeline()
             self._cv_pipeline = cv_pipeline
-            self._cv_x, self._cv_y = self._cv_pipeline.create_pipeline()
+            self._cv_x, self._cv_y, _ = self._cv_pipeline.create_pipeline()
 
         # Create training graph
         with tf.name_scope("training"):

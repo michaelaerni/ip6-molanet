@@ -123,7 +123,7 @@ class InputPipeline(object):
         with open(meta_file_path) as f:
             self._file_paths = [self._path_from_uuid(self._sample_directory, uuid) for uuid in f.readlines()]
 
-    def create_pipeline(self):
+    def create_pipeline(self) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         raise NotImplementedError("This method should be overridden by child classes")
 
     @property
@@ -142,10 +142,10 @@ class InputPipeline(object):
     def _read_record(
             self,
             input_producer: tf.FIFOQueue,
-            compression_type: tf.python_io.TFRecordCompressionType) -> Tuple[tf.Tensor, tf.Tensor]:
+            compression_type: tf.python_io.TFRecordCompressionType) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
 
         reader = tf.TFRecordReader(options=tf.python_io.TFRecordOptions(compression_type))
-        _, serialized_example = reader.read(input_producer, name="read_record")
+        work_item, serialized_example = reader.read(input_producer, name="read_record")
 
         raw_features = tf.parse_single_example(serialized_example, features={
             "image": tf.FixedLenFeature([self._image_size, self._image_size, 3], tf.float32),
@@ -155,7 +155,7 @@ class InputPipeline(object):
         image = raw_features["image"]
         segmentation = raw_features["segmentation"]
 
-        return image, segmentation
+        return image, segmentation, work_item
 
 
 class TrainingPipeline(InputPipeline):
@@ -198,7 +198,7 @@ class TrainingPipeline(InputPipeline):
         self._compression_type = compression_type
         self._name = name
 
-    def create_pipeline(self):
+    def create_pipeline(self) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
 
         with tf.name_scope(f"input"), tf.name_scope(self._name, "training"):
             input_producer = tf.train.string_input_producer(self._file_paths, shuffle=True, name="filename_queue")
@@ -211,7 +211,7 @@ class TrainingPipeline(InputPipeline):
             capacity = self._min_after_dequeue + self._batch_thread_count * self._batch_size
 
             # Join threads and batch values, not shuffling because it was shuffled already in string input producer
-            image_batch, segmentation_batch = tf.train.batch_join(
+            image_batch, segmentation_batch, work_item_batch = tf.train.batch_join(
                 parsed_samples,
                 self._batch_size,
                 capacity,
@@ -219,11 +219,11 @@ class TrainingPipeline(InputPipeline):
                 name="shuffle_batch_join"
             )
 
-            return image_batch, segmentation_batch
+            return image_batch, segmentation_batch, work_item_batch
 
-    def _read_and_augment_record(self, input_producer: tf.FIFOQueue) -> Tuple[tf.Tensor, tf.Tensor]:
+    def _read_and_augment_record(self, input_producer: tf.FIFOQueue) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         # Read actual record
-        image, segmentation = self._read_record(input_producer, self._compression_type)
+        image, segmentation, work_item = self._read_record(input_producer, self._compression_type)
 
         # Perform data augmentation
         for augmentation_function in self._augmentation_pipeline:
@@ -232,7 +232,7 @@ class TrainingPipeline(InputPipeline):
         # Perform color scheme conversion
         image = self._color_converter.convert(image)
 
-        return image, segmentation
+        return image, segmentation, work_item
 
 
 class EvaluationPipeline(InputPipeline):
@@ -267,13 +267,13 @@ class EvaluationPipeline(InputPipeline):
         self._compression_type = compression_type
         self._name = name
 
-    def create_pipeline(self):
+    def create_pipeline(self) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
 
         with tf.name_scope(f"input"), tf.name_scope(self._name, "evaluation"):
             input_producer = tf.train.string_input_producer(self._file_paths, shuffle=False, name="filename_queue")
 
             # Read records, just one because the reads happen single threaded. Records are already in tanh range
-            parsed_image, parsed_segmentation = self._read_record(input_producer, self._compression_type)
+            parsed_image, parsed_segmentation, work_item = self._read_record(input_producer, self._compression_type)
 
             # Perform color scheme conversion
             parsed_image = self._color_converter.convert(parsed_image)
@@ -282,8 +282,8 @@ class EvaluationPipeline(InputPipeline):
             capacity = self._min_after_dequeue + self._batch_thread_count * self._batch_size
 
             # Join threads and batch values
-            image_batch, segmentation_batch = tf.train.batch(
-                [parsed_image, parsed_segmentation],
+            image_batch, segmentation_batch, work_item_batch = tf.train.batch(
+                [parsed_image, parsed_segmentation, work_item],
                 self._batch_size,
                 self._batch_thread_count,
                 capacity,
@@ -291,7 +291,7 @@ class EvaluationPipeline(InputPipeline):
                 name="batch"
             )
 
-            return image_batch, segmentation_batch
+            return image_batch, segmentation_batch, work_item_batch
 
 
 # TODO: Data augmentation functions assume NHWC
