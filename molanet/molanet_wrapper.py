@@ -45,6 +45,7 @@ if __name__ == "__main__":
         sys.path.append(path_to_module)
 
     from molanet.models.molanet_poc import molanet_main
+
     check_tensorflow_gpu()
 
     # read string arguments to molanet
@@ -58,6 +59,7 @@ if __name__ == "__main__":
         if shutdown_on_exit and not os.name == "nt":
             print("exiting with shutdown")
             os.system("shutdown now -h")
+
 
     try:
         print("running molanet")
