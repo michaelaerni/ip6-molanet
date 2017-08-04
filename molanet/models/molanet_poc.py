@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+import sys
 from datetime import datetime
 
 import tensorflow as tf
@@ -36,9 +37,9 @@ def create_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-if __name__ == "__main__":
+def molanet_main(args:[str]):
     parser = create_arg_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     logdir: str
     if args.logsubdir and args.restore is None:
@@ -117,3 +118,6 @@ if __name__ == "__main__":
 
         print("Starting training")
         trainer.train()
+
+if __name__ == "__main__":
+    molanet_main(sys.argv[1:]) # first argument is the name of this script
