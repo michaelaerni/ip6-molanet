@@ -24,6 +24,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logdir", type=str, help="Directory into which summaries and checkpoints are written")
     parser.add_argument("--restore", type=int, help="If set, restores the model from logdir with the given iteration")
     parser.add_argument("--debug-placement", action="store_true", help="Output device placement")
+    parser.add_argument("--no-gpu", action="store_true", help="Run everything on CPU")
     parser.add_argument("--logsubdir", action="store_true", help="Create a subdirectory in logdir for each new run")
     parser.add_argument("--discriminator-iterations", type=int, default=1, help="Number of discriminator iterations")
     parser.add_argument("--gradient-lambda", type=int, default=10, help="Discriminator gradient penalty lambda")
@@ -105,7 +106,7 @@ def molanet_main(args:[str]):
             discriminator_iterations=args.discriminator_iterations,
             max_iterations=args.max_iterations,
             session_configuration=config,
-            use_gpu=True),
+            use_gpu=not args.no_gpu),
         learning_rate=0.0001, beta1=0, beta2=0.9)
     print("Trainer created")
 
