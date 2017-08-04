@@ -4,8 +4,6 @@ import sys
 
 import tensorflow as tf
 
-from molanet.models.molanet_poc import molanet_main
-
 
 def create_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser("Molanet Wrapper script")
@@ -40,12 +38,13 @@ if __name__ == "__main__":
     elif not shutdown_on_exit:
         print("This machine will not automatically shutdown. DO NOT FORGET!")
 
-    # make molanet available if it isn't already
+    # make molanet available if it isn't already. this is a bit hacky
     path_to_this_script = sys.argv[0]
-    path_to_module = path_to_this_script.replace("/MolanetWrapper.py", "")
+    path_to_module = path_to_this_script.replace("/molanet/MolanetWrapper.py", "")
     if not path_to_module in sys.path:
         sys.path.append(path_to_module)
 
+    from molanet.models.molanet_poc import molanet_main
     check_tensorflow_gpu()
 
     # read string arguments to molanet
