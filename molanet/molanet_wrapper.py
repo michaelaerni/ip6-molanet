@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     # make molanet available if it isn't already. this is a bit hacky
     path_to_this_script = sys.argv[0]
-    path_to_module = path_to_this_script.replace("/molanet/MolanetWrapper.py", "")
+    path_to_module = path_to_this_script.replace("/molanet/molanet_wrapper.py", "")
     if not path_to_module in sys.path:
         sys.path.append(path_to_module)
 
