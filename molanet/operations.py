@@ -180,3 +180,58 @@ def conv2d(
             result = leaky_relu(result, 0.2)
 
         return result, w, b
+
+
+def resize_conv2d(self,
+                   features: tf.Tensor,
+                   feature_count: int,
+                   output_size: int,
+                   name: str,
+                   keep_prob: float,
+                   filter_size: int,
+                   concat_activations=None,
+                   use_batchnorm=True,
+                   do_activation=True):
+    """
+    this method assumes the features are of shape [B
+
+    See
+    https://distill.pub/2016/deconv-checkerboard/
+    Our experience has been that nearest-neighbor resize followed by a convolution works very well, in a wide variety of contexts.
+
+    tf.image.resize_images()
+    tf.pad()
+    tf.nn.conv2d()
+    """
+    # TODO resize_images distorts dimensions
+    # TODO fix by using tf.image.resize_image_with_crop_or_pad() but we NEED nearest neighbour (default is Bilinear)
+
+    # scale does not preserve aspect ration but NxN images should be fine
+    resized = tf.image.resize_nearest_neighbor(features, (output_size, output_size), name=f"{name}_resize")
+
+    # padding = tf.constant(output_size - (resized.get_shape().as_list()[1] * 2 - filter_size + 1))
+    # resized_padded = tf.cond(padding > 0, lambda: tf.image.pad_to_bounding_box(resized, padding, padding,
+    #                                                                            output_size +2*padding,
+    #                                                                            output_size +2*padding),
+    #                          lambda: resized)
+
+
+    conv, w, b = self._conv2d(resized, feature_count, f"{name}_conv2d", filter_size, use_batchnorm, stride=1,
+                              do_activation=do_activation)
+
+    if use_batchnorm:
+        bn = tf.contrib.layers.batch_norm(conv, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
+    else:
+        bn = conv
+    d = tf.nn.dropout(bn, keep_prob)
+
+    if do_activation:
+        a = tf.nn.relu(d)
+    else:
+        a = d
+
+    # Concat activations if available
+    if concat_activations is not None:
+        a = tf.concat([a, concat_activations], axis=3)
+
+    return a, w, b
