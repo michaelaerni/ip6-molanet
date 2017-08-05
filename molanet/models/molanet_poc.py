@@ -26,6 +26,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--debug-placement", action="store_true", help="Output device placement")
     parser.add_argument("--no-gpu", action="store_true", help="Run everything on CPU")
     parser.add_argument("--logsubdir", action="store_true", help="Create a subdirectory in logdir for each new run")
+    parser.add_argument("--nchw", action="store_true", help="Uses NCHW format for training and interference")
     parser.add_argument("--discriminator-iterations", type=int, default=1, help="Number of discriminator iterations")
     parser.add_argument("--gradient-lambda", type=int, default=10, help="Discriminator gradient penalty lambda")
     parser.add_argument("--l1-lambda", type=int, default=0, help="Generator loss l1 lambda")
@@ -53,6 +54,8 @@ def molanet_main(args: [str]):
         shutil.rmtree(logdir, ignore_errors=True)
         os.makedirs(logdir)
 
+    data_format = "NCHW" if args.nchw else "NHWC"
+
     tf.reset_default_graph()
 
     AUGMENTATION_FUNCTIONS = [
@@ -67,10 +70,12 @@ def molanet_main(args: [str]):
     # TODO: Image size is hardcoded
     training_pipeline = TrainingPipeline(args.sampledir, args.train_set, image_size=512,
                                          color_converter=color_converter,
+                                         data_format=data_format,
                                          batch_size=1, read_thread_count=4, batch_thread_count=1,
                                          augmentation_functions=AUGMENTATION_FUNCTIONS, name="training")
     cv_pipeline = EvaluationPipeline(args.sampledir, args.cv_set, image_size=512,
                                      color_converter=color_converter,
+                                     data_format=data_format,
                                      batch_size=1, batch_thread_count=1, name="cv")
 
     print("Input pipelines created")
@@ -105,7 +110,8 @@ def molanet_main(args: [str]):
             discriminator_iterations=args.discriminator_iterations,
             max_iterations=args.max_iterations,
             session_configuration=config,
-            use_gpu=not args.no_gpu),
+            use_gpu=not args.no_gpu,
+            data_format=data_format),
         learning_rate=0.0001, beta1=0, beta2=0.9)
     print("Trainer created")
 

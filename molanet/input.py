@@ -186,9 +186,10 @@ class TrainingPipeline(InputPipeline):
             batch_thread_count: int = 1,
             min_after_dequeue: int = 100,
             compression_type: tf.python_io.TFRecordCompressionType = tf.python_io.TFRecordCompressionType.ZLIB,
-            name: str = None
+            name: str = None,
+            data_format: str = "NHWC"
     ):
-        super().__init__(input_directory, data_set_name, image_size, color_converter)
+        super().__init__(input_directory, data_set_name, image_size, color_converter, data_format)
 
         if batch_size < 1:
             raise ValueError("Batch sizes must at least contain one image")
@@ -265,9 +266,10 @@ class EvaluationPipeline(InputPipeline):
             batch_thread_count: int = 1,
             min_after_dequeue: int = 100,
             compression_type: tf.python_io.TFRecordCompressionType = tf.python_io.TFRecordCompressionType.ZLIB,
-            name: str = None
+            name: str = None,
+            data_format: str = "NHWC"
     ):
-        super().__init__(input_directory, data_set_name, image_size, color_converter)
+        super().__init__(input_directory, data_set_name, image_size, color_converter, data_format)
 
         if batch_size < 1:
             raise ValueError("Batch sizes must at least contain one image")
