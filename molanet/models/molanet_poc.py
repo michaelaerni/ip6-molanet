@@ -9,6 +9,7 @@ import tensorflow as tf
 from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
     EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb, RGBToLabConverter
+from molanet.models.dilated_convolution import DilatedConvolutionFactory
 from molanet.models.pix2pix import Pix2PixFactory
 from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
 
@@ -90,14 +91,19 @@ def molanet_main(args: [str]):
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
         print("Enabled JIT XLA compilation")
 
-    network_factory = Pix2PixFactory(
+    # network_factory = Pix2PixFactory(
+    #     spatial_extent=512,
+    #     min_generator_features=64,
+    #     min_discriminator_features=64,
+    #     max_generator_features=1024,
+    #     max_discriminator_features=1024,
+    #     use_batchnorm=True,
+    #     dropout_layer_count=2
+    # )
+    network_factory = DilatedConvolutionFactory(
         spatial_extent=512,
-        min_generator_features=64,
-        min_discriminator_features=64,
-        max_generator_features=1024,
-        max_discriminator_features=1024,
-        use_batchnorm=True,
-        dropout_layer_count=2
+        min_discriminator_features=16,
+        max_discriminator_features=256
     )
 
     trainer = NetworkTrainer(
