@@ -315,8 +315,6 @@ class EvaluationPipeline(InputPipeline):
             return image_batch, segmentation_batch, work_item_batch
 
 
-# TODO: Data augmentation functions assume NHWC
-
 # TODO: Could implement random noise for augmentation
 
 
@@ -358,6 +356,7 @@ def random_rotate_flip_rgb(
     tf.assert_rank(image, 3)
 
     # TODO: Document: Rotates randomly [0, 90, 180, 270] degrees and optionally flips horizontal, achieves all transform
+    # TODO: Document: Assumes NHWC format and tanh range
 
     with tf.name_scope("augmentation"), tf.name_scope(name, "random_rotate_flip"):
         # Concat images and segmentations for easier and faster handling
@@ -388,6 +387,8 @@ def random_rotate_flip_rgb(
 def random_contrast_rgb(image: tf.Tensor, lower: float, upper: float, name: str = None) -> tf.Tensor:
     if lower < 0 or lower >= upper:
         raise ValueError("Lower bound must be positive and strictly lower than upper bound")
+
+    # TODO: Document: Assumes NHWC format and tanh range
 
     tf.assert_rank(image, 3)
 
@@ -424,6 +425,8 @@ def random_contrast_rgb(image: tf.Tensor, lower: float, upper: float, name: str 
 def random_brightness_rgb(image: tf.Tensor, lower: float, upper: float, name: str = None) -> tf.Tensor:
     if lower >= upper:
         raise ValueError("Lower bound must be strictly smaller than upper bound")
+
+    # TODO: Document: Assumes NHWC format and tanh range
 
     tf.assert_rank(image, 3)
 
