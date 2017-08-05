@@ -7,6 +7,7 @@ import tensorflow as tf
 class ColorConverter(object):
     """
     Converts from a color space to another as a part of the input pipeline.
+    The order of image tensors has to be HWC, CHW is not supported.
     """
 
     # TODO: Create convert_back method
@@ -99,12 +100,17 @@ class InputPipeline(object):
     # TODO: Refactor common functionality in all pipelines
 
     def __init__(self, input_directory: str, data_set_name: str, image_size: int,
-                 color_converter: Optional[ColorConverter] = None):
+                 color_converter: Optional[ColorConverter] = None,
+                 data_format: str = "NHWC"):
         if image_size < 1:
             raise ValueError("Image size must be bigger than 0")
         self._image_size = image_size
 
         self._color_converter = color_converter if color_converter is not None else self._NoopConverter()
+
+        if data_format != "NCHW" or data_format != "NHWC":
+            raise ValueError(f"Unsupported data format {data_format}")
+        self._data_format = data_format
 
         # Some methods require absolute paths, sanitize it
         self._input_directory = os.path.abspath(input_directory)
@@ -156,6 +162,13 @@ class InputPipeline(object):
         segmentation = raw_features["segmentation"]
 
         return image, segmentation, work_item
+
+    def _convert_data_format(self, input_tensor: tf.Tensor) -> tf.Tensor:
+        if self._data_format == "NHWC":
+            # Samples are stored in NHWC, do nothing
+            return input_tensor
+        else:
+            return tf.transpose(input_tensor, [0, 3, 1, 2])
 
 
 class TrainingPipeline(InputPipeline):
@@ -232,6 +245,10 @@ class TrainingPipeline(InputPipeline):
         # Perform color scheme conversion
         image = self._color_converter.convert(image)
 
+        # Convert from NHWC to NCHW if needed
+        image = self._convert_data_format(image)
+        segmentation = self._convert_data_format(segmentation)
+
         return image, segmentation, work_item
 
 
@@ -277,6 +294,10 @@ class EvaluationPipeline(InputPipeline):
 
             # Perform color scheme conversion
             parsed_image = self._color_converter.convert(parsed_image)
+
+            # Convert from NHWC to NCHW if needed
+            parsed_image = self._convert_data_format(parsed_image)
+            parsed_segmentation = self._convert_data_format(parsed_segmentation)
 
             # Calculate capacity using safety margin
             capacity = self._min_after_dequeue + self._batch_thread_count * self._batch_size

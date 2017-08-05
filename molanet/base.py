@@ -153,6 +153,7 @@ class TrainingOptions(NamedTuple):
     discriminator_iterations: int = 1
     session_configuration: tf.ConfigProto = None
     use_gpu: bool = True
+    data_format: str = "NHWC"
 
 
 class NetworkTrainer(object):
