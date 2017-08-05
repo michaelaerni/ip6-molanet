@@ -38,11 +38,10 @@ def create_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def molanet_main(args:[str]):
+def molanet_main(args: [str]):
     parser = create_arg_parser()
     args = parser.parse_args(args)
 
-    logdir: str
     if args.logsubdir and args.restore is None:
         now = datetime.now()
         subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}"
