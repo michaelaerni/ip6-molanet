@@ -1,9 +1,7 @@
-from typing import Union, Tuple, List
-
-import tensorflow as tf
+from typing import Union, List
 
 from molanet.base import NetworkFactory, ObjectiveFactory
-from molanet.operations import leaky_relu, select_device
+from molanet.operations import *
 
 
 class Pix2PixFactory(NetworkFactory):
@@ -47,8 +45,13 @@ class Pix2PixFactory(NetworkFactory):
             while layer_size > 1:
                 use_batchnorm = self._use_batchnorm and (layer_index > 0 and layer_size // 2 > 1)
                 filter_sizes = 5 if layer_index == 0 else 4
-                input_tensor, _, _ = self._conv2d(input_tensor, feature_count, f"enc_{layer_index}",
-                                                  filter_size=filter_sizes, use_batchnorm=use_batchnorm)
+                input_tensor, _, _ = conv2d(
+                    input_tensor,
+                    feature_count,
+                    f"enc_{layer_index}",
+                    filter_size=filter_sizes,
+                    stride=2,
+                    do_batchnorm=use_batchnorm)
                 encoder_activations.append(input_tensor)
                 feature_count = min(self._max_generator_features, feature_count * 2)
                 layer_size = layer_size // 2
@@ -68,13 +71,17 @@ class Pix2PixFactory(NetworkFactory):
                 filter_sizes = 4 if idx < layer_count - 1 else 5
                 feature_count = min(self._max_generator_features, self._min_discriminator_features * (2 ** encoder_index))\
                     if encoder_index >= 0 else 1
-                input_tensor, _, _ = self._conv2d_transpose(input_tensor, feature_count,
-                                                            target_layer_size,
-                                                            f"dec_{idx}", keep_probability, batch_size,
-                                                            filter_size=filter_sizes,
-                                                            concat_activations=encoder_activations[encoder_index] if encoder_index >= 0 else None,
-                                                            use_batchnorm=use_batchnorm,
-                                                            do_activation=do_activation)
+                input_tensor, _, _ = conv2d_transpose(
+                    input_tensor,
+                    feature_count,
+                    f"dec_{idx}",
+                    filter_size=filter_sizes,
+                    output_shape_2d=(target_layer_size, target_layer_size),
+                    keep_probability=keep_probability,
+                    concat_activations=encoder_activations[encoder_index] if encoder_index >= 0 else None,
+                    stride=2,
+                    do_batchnorm=use_batchnorm,
+                    do_activation=do_activation)
 
             return tf.tanh(input_tensor, name="dec_activation")
 
@@ -93,8 +100,14 @@ class Pix2PixFactory(NetworkFactory):
 
             while layer_size > 1:
                 filter_sizes = 5 if layer_index == 0 else 4
-                input_tensor, _, _ = self._conv2d(input_tensor, feature_count, str(layer_index), use_batchnorm=False,
-                                                  filter_size=filter_sizes, do_activation=layer_size // 2 > 1)
+                input_tensor, _, _ = conv2d(
+                    input_tensor,
+                    feature_count,
+                    str(layer_index),
+                    filter_size=filter_sizes,
+                    stride=2,
+                    do_batchnorm=False,
+                    do_activation=layer_size // 2 > 1)
                 layer_size = layer_size // 2
                 feature_count = min(self._max_discriminator_features, feature_count * 2) if layer_size // 2 > 1 else 1
                 layer_index += 1
@@ -103,53 +116,6 @@ class Pix2PixFactory(NetworkFactory):
                 return input_tensor, concatenated_input
             else:
                 return input_tensor
-
-    def _weight_variable(self, name, shape):
-        return tf.get_variable(name, shape, initializer=self._weight_initializer)
-
-    def _bias_variable(self, name, shape):
-        return tf.get_variable(name, shape, initializer=tf.constant_initializer(0.0))
-
-    def _conv2d(self, features, feature_count, name, filter_size=5, use_batchnorm=True, stride=2, do_activation=True):
-        w = self._weight_variable("w_" + name, [filter_size, filter_size, features.get_shape()[-1], feature_count])
-        b = self._bias_variable("b_" + name, [feature_count])
-        conv = tf.nn.bias_add(tf.nn.conv2d(features, w, strides=[1, stride, stride, 1], padding="SAME"),
-                              b)  # TODO: Padding?
-        if use_batchnorm:
-            bn = tf.contrib.layers.batch_norm(conv, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
-        else:
-            bn = conv
-
-        if do_activation:
-            a = leaky_relu(bn, 0.2)
-        else:
-            a = bn
-
-        return a, w, b
-
-    def _conv2d_transpose(self, features, feature_count, output_size, name, keep_prob, batch_size, filter_size=5,
-                          concat_activations=None, use_batchnorm=True, do_activation=True):
-        w = self._weight_variable("w_" + name, [filter_size, filter_size, feature_count, features.get_shape()[-1]])
-        b = self._bias_variable("b_" + name, [feature_count])
-        conv = tf.nn.bias_add(
-            tf.nn.conv2d_transpose(features, w, output_shape=[batch_size, output_size, output_size, feature_count],
-                                   strides=[1, 2, 2, 1], padding="SAME"), b)  # TODO: Padding?
-        if use_batchnorm:
-            bn = tf.contrib.layers.batch_norm(conv, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
-        else:
-            bn = conv
-        d = tf.nn.dropout(bn, keep_prob)
-
-        if do_activation:
-            a = tf.nn.relu(d)
-        else:
-            a = d
-
-        # Concat activations if available
-        if concat_activations is not None:
-            a = tf.concat([a, concat_activations], axis=3)
-
-        return a, w, b
 
 
 class Pix2PixLossFactory(ObjectiveFactory):
