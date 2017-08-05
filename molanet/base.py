@@ -1,14 +1,14 @@
 import csv
 import ntpath
 import os
+import shutil
 from typing import Union, Tuple, NamedTuple, List
 
 import numpy as np
-import shutil
 import tensorflow as tf
 from PIL import Image
 
-from molanet.input import InputPipeline
+from molanet.input import InputPipeline, ColorConverter
 from molanet.operations import use_cpu, select_device
 
 
@@ -25,7 +25,8 @@ class NetworkFactory(object):
             self,
             x: tf.Tensor,
             reuse: bool = False,
-            use_gpu: bool = True
+            use_gpu: bool = True,
+            data_format: str = "NHWC"
     ) -> tf.Tensor:
         """
         Creates a generator network and optionally applies summary options where useful.
@@ -33,6 +34,7 @@ class NetworkFactory(object):
         :param x: Input for the created generator
         :param reuse: If False, the weights cannot exist yet, if True they will be reused. Defaults to False.
         :param use_gpu: If True, operations will be created on the gpu. Defaults to True.
+        :param data_format: Format of the data matrices, either "NHWC" or "NCHW". Defaults to "NHWC".
         :return: Output tensor of the created generator
         """
 
@@ -44,7 +46,8 @@ class NetworkFactory(object):
             y: tf.Tensor,
             reuse: bool = False,
             return_input_tensor: bool = False,
-            use_gpu: bool = True
+            use_gpu: bool = True,
+            data_format: str = "NHWC"
     ) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
         """
         Creates a discriminator network and optionally applies summary options where useful.
@@ -55,6 +58,7 @@ class NetworkFactory(object):
         :param return_input_tensor: If True, the concatenated input tensor which is fed to the network is returned too.
         Defaults to False.
         :param use_gpu: If True, operations will be created on the gpu. Defaults to True.
+        :param data_format: Format of the data matrices, either "NHWC" or "NCHW". Defaults to "NHWC".
         :return: Output tensor of the created discriminator as unscaled logits. If return_input_tensor is set to True,
         the concatenated input tensor which is feed to the network is returned too.
         """
@@ -78,7 +82,8 @@ class ObjectiveFactory(object):
             generator: tf.Tensor,
             generator_discriminator: tf.Tensor,
             apply_summary: bool = True,
-            use_gpu: bool = True
+            use_gpu: bool = True,
+            data_format: str = "NHWC"
     ) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         """
         Creates the generator loss function and optionally applies summary options.
@@ -90,6 +95,7 @@ class ObjectiveFactory(object):
         :param generator_discriminator: Discriminator logits for the generated output corresponding to the x
         :param apply_summary: If True, summary operations will be added to the graph. Defaults to True.
         :param use_gpu: If True, operations will be created on the gpu. Defaults to True.
+        :param data_format: Format of the data matrices, either "NHWC" or "NCHW". Defaults to "NHWC".
         :return: Loss function for the generator which can be used for optimization and if specified summary ops
         """
 
@@ -103,7 +109,8 @@ class ObjectiveFactory(object):
             generator_discriminator: tf.Tensor,
             real_discriminator: tf.Tensor,
             apply_summary: bool = True,
-            use_gpu: bool = True
+            use_gpu: bool = True,
+            data_format: str = "NHWC"
     ) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         """
         Creates the discriminator loss function and optionally applies summary options.
@@ -116,6 +123,7 @@ class ObjectiveFactory(object):
         :param real_discriminator: Discriminator logits for the ground truth output
         :param apply_summary: If True, summary operations will be added to the graph. Defaults to True.
         :param use_gpu: If True, operations will be created on the gpu. Defaults to True.
+        :param data_format: Format of the data matrices, either "NHWC" or "NCHW". Defaults to "NHWC".
         :return: Loss function for the discriminator which can be used for optimization and if specified summary ops
         """
 
@@ -142,6 +150,24 @@ def _create_summaries(generator: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf
                        lambda: 0.0)
 
     return accuracy, precision, recall, f1_score
+
+
+def _create_concatenated_images(
+        x: tf.Tensor, y: tf.Tensor, generated_y: tf.Tensor,
+        color_converter: ColorConverter, data_format: str = "NHWC") -> tf.Tensor:
+
+    if data_format == "NCHW":
+        # Convert from NCHW back to NHWC
+        x = tf.transpose(x, [0, 2, 3, 1])
+        y = tf.transpose(y, [0, 2, 3, 1])
+        generated_y = tf.transpose(generated_y, [0, 2, 3, 1])
+
+    return tf.cast(tf.round(tf.concat([
+        (color_converter.convert_back(x) + 1.0) / 2.0 * 255.0,
+        tf.tile((y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+        tf.tile((generated_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
+        tf.tile(tf.abs(tf.subtract(generated_y, y)), multiples=[1, 1, 1, 3]) * 255.0
+    ], axis=2)), dtype=tf.uint8)
 
 
 class TrainingOptions(NamedTuple):
@@ -182,20 +208,25 @@ class NetworkTrainer(object):
         with tf.name_scope("training"):
 
             # Create networks
-            self._generator = network_factory.create_generator(self._train_x, use_gpu=self._training_options.use_gpu)
+            self._generator = network_factory.create_generator(self._train_x, use_gpu=self._training_options.use_gpu,
+                                                               data_format=self._training_options.data_format)
             self._discriminator_generated = network_factory.create_discriminator(
-                self._train_x, self._generator, use_gpu=self._training_options.use_gpu)
+                self._train_x, self._generator, use_gpu=self._training_options.use_gpu,
+                data_format=self._training_options.data_format)
             self._discriminator_real = network_factory.create_discriminator(
-                self._train_x, self._train_y, reuse=True, use_gpu=self._training_options.use_gpu)
+                self._train_x, self._train_y, reuse=True, use_gpu=self._training_options.use_gpu,
+                data_format=self._training_options.data_format)
 
             # Create losses
             self._generator_loss, generator_summary = objective_factory.create_generator_loss(
                 self._train_x, self._train_y,
-                self._generator, self._discriminator_generated, use_gpu=self._training_options.use_gpu)
+                self._generator, self._discriminator_generated, use_gpu=self._training_options.use_gpu,
+                data_format=self._training_options.data_format)
             self._discriminator_loss, discriminator_summary = objective_factory.create_discriminator_loss(
                 self._train_x, self._train_y,
                 self._generator, self._discriminator_generated, self._discriminator_real,
-                use_gpu=self._training_options.use_gpu)
+                use_gpu=self._training_options.use_gpu,
+                data_format=self._training_options.data_format)
 
             with tf.device(select_device(self._training_options.use_gpu)):
                 # Create optimizers
@@ -236,18 +267,23 @@ class NetworkTrainer(object):
         with tf.name_scope("cv"):
             # Create networks
             generator = network_factory.create_generator(
-                self._cv_x, reuse=True, use_gpu=self._training_options.use_gpu)
+                self._cv_x, reuse=True, use_gpu=self._training_options.use_gpu,
+                data_format=self._training_options.data_format)
             discriminator_generated = network_factory.create_discriminator(
-                self._cv_x, generator, reuse=True, use_gpu=self._training_options.use_gpu)
+                self._cv_x, generator, reuse=True, use_gpu=self._training_options.use_gpu,
+                data_format=self._training_options.data_format)
             discriminator_real = network_factory.create_discriminator(
-                self._cv_x, self._cv_y, reuse=True, use_gpu=self._training_options.use_gpu)
+                self._cv_x, self._cv_y, reuse=True, use_gpu=self._training_options.use_gpu,
+                data_format=self._training_options.data_format)
 
             # Create losses
             _, generator_summary = objective_factory.create_generator_loss(
-                self._cv_x, self._cv_y, generator, discriminator_generated, use_gpu=self._training_options.use_gpu)
+                self._cv_x, self._cv_y, generator, discriminator_generated, use_gpu=self._training_options.use_gpu,
+                data_format=self._training_options.data_format)
             _, discriminator_summary = objective_factory.create_discriminator_loss(
                 self._cv_x, self._cv_y, generator, discriminator_generated, discriminator_real,
-                use_gpu=self._training_options.use_gpu)
+                use_gpu=self._training_options.use_gpu,
+                data_format=self._training_options.data_format)
 
             # Create other summary options
             accuracy, precision, recall, f1_score = _create_summaries(generator, self._cv_y)
@@ -262,12 +298,13 @@ class NetworkTrainer(object):
 
             with use_cpu():
                 # Concatenated images
-                self._concatenated_images_op = tf.cast(tf.round(tf.concat([
-                    (self._cv_pipeline.color_converter.convert_back(self._cv_x) + 1.0) / 2.0 * 255.0,
-                    tf.tile((self._cv_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-                    tf.tile((generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-                    tf.tile(tf.abs(tf.subtract(generator, self._cv_y)), multiples=[1, 1, 1, 3]) * 255.0
-                ], axis=2)), dtype=tf.uint8)
+                self._concatenated_images_op = _create_concatenated_images(
+                    self._cv_x,
+                    self._cv_y,
+                    generator,
+                    self._cv_pipeline.color_converter,
+                    self._training_options.data_format
+                )
 
             # Merge summaries
             self._cv_summary = tf.summary.merge(summary_operations + generator_summary + discriminator_summary)
@@ -381,7 +418,7 @@ class NetworkTrainer(object):
                     self._sess.run(self._op_generator)
 
                 # Check for iteration limit reached
-                if iteration >= self._training_options.max_iterations:
+                if iteration > self._training_options.max_iterations:
                     coord.request_stop()
 
         except Exception as ex:
@@ -412,7 +449,8 @@ class NetworkEvaluator(object):
             network_factory: NetworkFactory,
             checkpoint_file: str,
             output_directory: str,
-            use_gpu: bool = False
+            use_gpu: bool = False,
+            data_format: str = "NHWC"
     ):
         # TODO: Assert batch_size == 1
         self._pipeline = pipeline
@@ -428,9 +466,7 @@ class NetworkEvaluator(object):
             self._x, self._y, self._file_names = self._pipeline.create_pipeline()
 
         # Create networks
-        generator = network_factory.create_generator(self._x, use_gpu=use_gpu)
-        # discriminator_generated = network_factory.create_discriminator(self._x, generator, use_gpu=use_gpu)
-        # discriminator_real = network_factory.create_discriminator(self._x, self._y, reuse=True, use_gpu=use_gpu)
+        generator = network_factory.create_generator(self._x, use_gpu=use_gpu, data_format=data_format)
 
         # TODO: Refactor loss output in a way that objective can also be evaluated
 
@@ -439,12 +475,13 @@ class NetworkEvaluator(object):
             self._accuracy, self._precision, self._recall, self._f1_score = _create_summaries(generator, self._y)
 
             # Concatenated images
-            self._concatenated_images = tf.cast(tf.round(tf.concat([
-                (self._pipeline.color_converter.convert_back(self._x) + 1.0) / 2.0 * 255.0,
-                tf.tile((self._y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-                tf.tile((generator + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-                tf.tile(tf.abs(tf.subtract(generator, self._y)), multiples=[1, 1, 1, 3]) * 255.0
-            ], axis=2)), dtype=tf.uint8)
+            self._concatenated_images = _create_concatenated_images(
+                self._x,
+                self._y,
+                generator,
+                self._pipeline.color_converter,
+                data_format
+            )
 
         self._saver = tf.train.Saver()
 

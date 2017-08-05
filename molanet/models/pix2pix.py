@@ -1,3 +1,4 @@
+import math
 from typing import Union, List
 
 from molanet.base import NetworkFactory, ObjectiveFactory
@@ -17,7 +18,6 @@ class Pix2PixFactory(NetworkFactory):
             dropout_layer_count: int = 2,
             use_batchnorm: bool = True,
             weight_initializer=tf.truncated_normal_initializer(stddev=0.02)):
-        import math
 
         # TODO: weight_initializer is currently ignored
 
@@ -34,7 +34,7 @@ class Pix2PixFactory(NetworkFactory):
         self._use_batchnorm = use_batchnorm
         self._weight_initializer = weight_initializer
 
-    def create_generator(self, x: tf.Tensor, reuse: bool = False, use_gpu: bool = True) -> tf.Tensor:
+    def create_generator(self, x: tf.Tensor, reuse: bool = False, use_gpu: bool = True, data_format: str = "NHWC") -> tf.Tensor:
         with tf.variable_scope("generator", reuse=reuse), tf.device(select_device(use_gpu)):
             input_tensor = x
             encoder_activations = []
@@ -52,7 +52,8 @@ class Pix2PixFactory(NetworkFactory):
                     f"enc_{layer_index}",
                     filter_size=filter_sizes,
                     stride=2,
-                    do_batchnorm=use_batchnorm)
+                    do_batchnorm=use_batchnorm,
+                    data_format=data_format)
                 encoder_activations.append(input_tensor)
                 feature_count = min(self._max_generator_features, feature_count * 2)
                 layer_size = layer_size // 2
@@ -82,7 +83,8 @@ class Pix2PixFactory(NetworkFactory):
                     concat_activations=encoder_activations[encoder_index] if encoder_index >= 0 else None,
                     stride=2,
                     do_batchnorm=use_batchnorm,
-                    do_activation=do_activation)
+                    do_activation=do_activation,
+                    data_format=data_format)
 
             return tf.tanh(input_tensor, name="dec_activation")
 
@@ -91,9 +93,12 @@ class Pix2PixFactory(NetworkFactory):
             x: tf.Tensor,
             y: tf.Tensor,
             reuse: bool = False,
-            return_input_tensor: bool = False, use_gpu: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
+            return_input_tensor: bool = False,
+            use_gpu: bool = True, data_format: str = "NHWC") -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
         with tf.variable_scope("discriminator", reuse=reuse), tf.device(select_device(use_gpu)):
-            concatenated_input = tf.concat((x, y), axis=3)
+            concat_axis = 3 if data_format == "NHWC" else 1
+
+            concatenated_input = tf.concat((x, y), axis=concat_axis)
             input_tensor = concatenated_input
             layer_size = self._spatial_extent
             feature_count = self._min_discriminator_features
@@ -108,7 +113,8 @@ class Pix2PixFactory(NetworkFactory):
                     filter_size=filter_sizes,
                     stride=2,
                     do_batchnorm=False,
-                    do_activation=layer_size // 2 > 1)
+                    do_activation=layer_size // 2 > 1,
+                    data_format=data_format)
                 layer_size = layer_size // 2
                 feature_count = min(self._max_discriminator_features, feature_count * 2) if layer_size // 2 > 1 else 1
                 layer_index += 1
@@ -126,8 +132,8 @@ class Pix2PixLossFactory(ObjectiveFactory):
 
     def create_discriminator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
                                   generator_discriminator: tf.Tensor, real_discriminator: tf.Tensor,
-                                  apply_summary: bool = True,
-                                  use_gpu: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
+                                  apply_summary: bool = True, use_gpu: bool = True,
+                                  data_format: str = "NHWC") -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         with tf.device(select_device(use_gpu)):
             loss_real = tf.reduce_mean(
                 tf.nn.sigmoid_cross_entropy_with_logits(
@@ -155,8 +161,8 @@ class Pix2PixLossFactory(ObjectiveFactory):
 
     def create_generator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
                               generator_discriminator: tf.Tensor,
-                              apply_summary: bool = True,
-                              use_gpu: bool = True) -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
+                              apply_summary: bool = True, use_gpu: bool = True,
+                              data_format: str = "NHWC") -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
         with tf.device(select_device(use_gpu)):
             loss_discriminator = tf.reduce_mean(
                 tf.nn.sigmoid_cross_entropy_with_logits(

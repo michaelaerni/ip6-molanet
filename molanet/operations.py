@@ -120,7 +120,7 @@ def conv2d_transpose(
         result = tf.nn.bias_add(conv, b, data_format=data_format)
 
         if do_batchnorm:
-            result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
+            result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True, data_format=data_format)  # TODO: Params?
 
         result = tf.nn.dropout(result, keep_probability)
 
@@ -174,7 +174,7 @@ def conv2d(
         result = tf.nn.bias_add(conv, b, data_format=data_format)
 
         if do_batchnorm:
-            result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
+            result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True, data_format=data_format)  # TODO: Params?
 
         if do_activation:
             result = leaky_relu(result, 0.2)

@@ -108,7 +108,7 @@ class InputPipeline(object):
 
         self._color_converter = color_converter if color_converter is not None else self._NoopConverter()
 
-        if data_format != "NCHW" or data_format != "NHWC":
+        if data_format != "NCHW" and data_format != "NHWC":
             raise ValueError(f"Unsupported data format {data_format}")
         self._data_format = data_format
 
@@ -168,7 +168,7 @@ class InputPipeline(object):
             # Samples are stored in NHWC, do nothing
             return input_tensor
         else:
-            return tf.transpose(input_tensor, [0, 3, 1, 2])
+            return tf.transpose(input_tensor, [2, 0, 1])
 
 
 class TrainingPipeline(InputPipeline):
