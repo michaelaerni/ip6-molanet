@@ -19,6 +19,8 @@ class Pix2PixFactory(NetworkFactory):
             weight_initializer=tf.truncated_normal_initializer(stddev=0.02)):
         import math
 
+        # TODO: weight_initializer is currently ignored
+
         if math.log2(spatial_extent) != int(math.log2(spatial_extent)):
             raise ValueError("spatial_extent must be a power of 2")
 
@@ -39,7 +41,6 @@ class Pix2PixFactory(NetworkFactory):
             layer_index = 0
             feature_count = self._min_generator_features
             layer_size = self._spatial_extent
-            batch_size = tf.shape(x)[0]
 
             # Encoder
             while layer_size > 1:
