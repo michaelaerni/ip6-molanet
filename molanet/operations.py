@@ -24,7 +24,7 @@ def use_cpu():
     return tf.device("/cpu:0")
 
 
-def jaccard_index(labels: tf.Tensor, values: tf.Tensor):
+def jaccard_index(labels: tf.Tensor, values: tf.Tensor) -> tf.Tensor:
     # TODO: Document: how and why jacquard
     # TODO: Could this be used with logits?
     # TODO: Document: Labels have to be either 0 or 1
@@ -51,6 +51,10 @@ def jaccard_index(labels: tf.Tensor, values: tf.Tensor):
         tf.greater(union_sum, 0),
         tf.divide(intersection_sum, union_sum),  # Use normal loss formulation
         tf.ones_like(intersection_sum))  # Both sets contain no values, therefore they are equal
+
+
+def tanh_to_sigmoid(input_tensor: tf.Tensor) -> tf.Tensor:
+    return tf.divide(tf.add(input_tensor, 1.0), 2.0)
 
 
 def conv2d_dilated(

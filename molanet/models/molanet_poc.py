@@ -9,9 +9,8 @@ import tensorflow as tf
 from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
     EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb, RGBToLabConverter
-from molanet.models.pix2pix import Pix2PixFactory
 from molanet.models.unet import UnetFactory
-from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
+from molanet.models.wgan_gp_jaccard import WassersteinJaccardFactory
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
@@ -103,7 +102,7 @@ def molanet_main(args: [str]):
         training_pipeline,
         cv_pipeline,
         network_factory,
-        WassersteinGradientPenaltyFactory(args.gradient_lambda, network_factory, l1_lambda=args.l1_lambda),
+        WassersteinJaccardFactory(args.gradient_lambda, network_factory),
         training_options=TrainingOptions(
             cv_summary_interval=args.cv_interval,
             summary_directory=logdir,
@@ -112,7 +111,7 @@ def molanet_main(args: [str]):
             session_configuration=config,
             use_gpu=not args.no_gpu,
             data_format=data_format),
-        learning_rate=0.0001, beta1=0.9, beta2=0.999)
+        learning_rate=0.0001, beta1=0, beta2=0.9)  # TODO: Change those parameters back to something (normal?)
     print("Trainer created")
 
     with trainer:
