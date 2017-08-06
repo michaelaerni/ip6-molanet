@@ -92,10 +92,12 @@ def conv2d_transpose(
             input_feature_count = input_shape[-1]
             output_shape = [batch_size, output_shape_2d[0], output_shape_2d[1], feature_count]
             concat_axis = 3
+            strides = [1, stride, stride, 1]
         elif data_format == "NCHW":
             input_feature_count = input_shape[1]
             output_shape = [batch_size, feature_count, output_shape_2d[0], output_shape_2d[1]]
             concat_axis = 1
+            strides = [1, 1, stride, stride]
         else:
             raise ValueError(f"Unsupported data format {data_format}")
 
@@ -113,16 +115,17 @@ def conv2d_transpose(
             input_tensor,
             filter=w,
             output_shape=output_shape,
-            strides=[1, stride, stride, 1],
+            strides=strides,
             padding="SAME",  # TODO: Make padding configurable
             data_format=data_format)
 
         result = tf.nn.bias_add(conv, b, data_format=data_format)
 
         if do_batchnorm:
-            result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
+            result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True, data_format=data_format)  # TODO: Params?
 
-        result = tf.nn.dropout(result, keep_probability)
+        if keep_probability is not None:
+            result = tf.nn.dropout(result, keep_probability)
 
         if do_activation:
             result = tf.nn.relu(result)
@@ -150,8 +153,10 @@ def conv2d(
         input_shape = input_tensor.get_shape()
         if data_format == "NHWC":
             input_feature_count = input_shape[-1]
+            strides = [1, stride, stride, 1]
         elif data_format == "NCHW":
             input_feature_count = input_shape[1]
+            strides = [1, 1, stride, stride]
         else:
             raise ValueError(f"Unsupported data format {data_format}")
 
@@ -167,14 +172,14 @@ def conv2d(
         conv = tf.nn.conv2d(
             input_tensor,
             filter=w,
-            strides=[1, stride, stride, 1],
+            strides=strides,
             padding="SAME",  # TODO: Make padding configurable
             data_format=data_format)
 
         result = tf.nn.bias_add(conv, b, data_format=data_format)
 
         if do_batchnorm:
-            result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
+            result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True, data_format=data_format)  # TODO: Params?
 
         if do_activation:
             result = leaky_relu(result, 0.2)
