@@ -76,15 +76,16 @@ class WassersteinGradientPenaltyFactory(ObjectiveFactory):
                     labels=tf.ones_like(generator_discriminator))
             )
 
-            if self._l1_lambda > 0.0:
+        if self._l1_lambda > 0.0:
+            with tf.device(select_device(use_gpu)):
                 l1_loss = tf.reduce_mean(tf.abs(tf.subtract(y, generator)))
 
-                with use_cpu():
-                    if apply_summary:
-                        summary_ops.append(tf.summary.scalar("generator_loss_l1", l1_loss))
-                        summary_ops.append(tf.summary.scalar("generator_loss_discriminator", loss))
+            with use_cpu():
+                if apply_summary:
+                    summary_ops.append(tf.summary.scalar("generator_loss_l1", l1_loss))
+                    summary_ops.append(tf.summary.scalar("generator_loss_discriminator", loss))
 
-                    loss = loss + tf.constant(self._l1_lambda, dtype=tf.float32) * l1_loss
+                loss = loss + tf.constant(self._l1_lambda, dtype=tf.float32) * l1_loss
 
         if apply_summary:
             summary_ops.append(tf.summary.scalar("generator_loss", loss))
