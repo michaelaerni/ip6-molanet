@@ -91,20 +91,11 @@ def molanet_main(args: [str]):
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
         print("Enabled JIT XLA compilation")
 
-    # network_factory = Pix2PixFactory(
-    #     spatial_extent=512,
-    #     min_generator_features=64,
-    #     min_discriminator_features=64,
-    #     max_generator_features=1024,
-    #     max_discriminator_features=1024,
-    #     use_batchnorm=True,
-    #     dropout_layer_count=2
-    # )
     network_factory = UnetFactory(
         spatial_extent=512,
         min_discriminator_features=32,
         max_discriminator_features=512,
-        convolutions_per_level=1
+        convolutions_per_level=2
     )
 
     trainer = NetworkTrainer(
@@ -113,6 +104,7 @@ def molanet_main(args: [str]):
         network_factory,
         WassersteinGradientPenaltyFactory(args.gradient_lambda, network_factory, l1_lambda=args.l1_lambda),
         training_options=TrainingOptions(
+            cv_summary_interval=1000,
             summary_directory=logdir,
             discriminator_iterations=args.discriminator_iterations,
             max_iterations=args.max_iterations,
