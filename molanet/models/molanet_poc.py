@@ -30,6 +30,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nchw", action="store_true", help="Uses NCHW format for training and interference")
     parser.add_argument("--discriminator-iterations", type=int, default=1, help="Number of discriminator iterations")
     parser.add_argument("--gradient-lambda", type=int, default=10, help="Discriminator gradient penalty lambda")
+    parser.add_argument("--cv-interval", type=int, default=100, help="Cross-validation interval")
     parser.add_argument("--l1-lambda", type=int, default=0, help="Generator loss l1 lambda")
     parser.add_argument("--convert-colors", action="store_true",
                         help="If specified, converts the input images from RGB to CIE Lab color space")
@@ -104,14 +105,14 @@ def molanet_main(args: [str]):
         network_factory,
         WassersteinGradientPenaltyFactory(args.gradient_lambda, network_factory, l1_lambda=args.l1_lambda),
         training_options=TrainingOptions(
-            cv_summary_interval=1000,
+            cv_summary_interval=args.cv_interval,
             summary_directory=logdir,
             discriminator_iterations=args.discriminator_iterations,
             max_iterations=args.max_iterations,
             session_configuration=config,
             use_gpu=not args.no_gpu,
             data_format=data_format),
-        learning_rate=0.0001, beta1=0, beta2=0.9)
+        learning_rate=0.0001, beta1=0.9, beta2=0.999)
     print("Trainer created")
 
     with trainer:
