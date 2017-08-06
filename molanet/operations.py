@@ -124,7 +124,8 @@ def conv2d_transpose(
         if do_batchnorm:
             result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True, data_format=data_format)  # TODO: Params?
 
-        result = tf.nn.dropout(result, keep_probability)
+        if keep_probability is not None:
+            result = tf.nn.dropout(result, keep_probability)
 
         if do_activation:
             result = tf.nn.relu(result)
