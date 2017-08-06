@@ -57,14 +57,27 @@ class DilatedConvolutionFactory(NetworkFactory):
                          use_gpu: bool = True, data_format: str = "NHWC") -> tf.Tensor:
         with tf.variable_scope("generator", reuse=reuse), tf.device(select_device(use_gpu)):
             # TODO: First try, use only dilated convolutions to see what happens
-            # TODO: First try with keeping feature count the same
             input_feature_count = x.get_shape()[-1]
+
+            # Create pre-filtering
+            feature_multipliers = [1, 1, 2, 2, 4, 4, 8]
+            current_layer = x
+            for layer_idx, feature_count in enumerate([input_feature_count * m for m in feature_multipliers]):
+                current_layer, _, _ = conv2d(
+                    current_layer,
+                    feature_count=feature_count,
+                    name=f"pre_{layer_idx}",
+                    filter_size=3,
+                    data_format=data_format
+                )
+            pre_filtered = current_layer
+
             dilation_exponents = [0, 0, 1, 2, 3, 4, 5, 6, 0]
-            feature_multipliers = [2, 2, 4, 8, 16, 32, 32, 32, 32]
+            feature_multipliers = [2, 2, 4, 8, 16, 16, 16, 16, 32]
 
             # Create dilated layers
             # TODO: Might fail due to padding
-            current_layer = x
+            current_layer = pre_filtered #x
             for layer_idx, (dilation_factor, feature_count) in enumerate(zip(
                     (2 ** e for e in dilation_exponents),
                     (input_feature_count * m for m in feature_multipliers))):
@@ -73,13 +86,18 @@ class DilatedConvolutionFactory(NetworkFactory):
                     current_layer,
                     feature_count=feature_count,
                     dilation_rate=dilation_factor,
-                    name=str(layer_idx),
+                    name=f"context_{layer_idx}",
+                    filter_size=3,
                     data_format=data_format
                 )
+            context = current_layer
+
+            concat_axis = 3 if data_format == "NHWC" else 1
+            concatenated_features = tf.concat([pre_filtered, context], axis=concat_axis)
 
             # Perform 1x1 convolution to produce output
             result, _, _ = conv2d(
-                current_layer,
+                concatenated_features,
                 feature_count=1,
                 name="output",
                 filter_size=1,
