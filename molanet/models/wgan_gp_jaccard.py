@@ -35,7 +35,7 @@ class WassersteinJaccardFactory(ObjectiveFactory):
             # Generated samples should be close to their inverse jaccard index => Loss defined
             # Generator samples have to be first converted into range [0, 1]
             loss_generated = tf.constant(1.0) - tf.reduce_mean(jaccard_index(
-                values=tanh_to_sigmoid(generator_discriminator),
+                values=tf.nn.sigmoid(generator_discriminator),
                 labels=tanh_to_sigmoid(y)
             ))
 
