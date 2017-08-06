@@ -79,6 +79,6 @@ class WassersteinJaccardFactory(ObjectiveFactory):
             )
 
         if apply_summary:
-            return loss, tf.summary.scalar("generator_loss", loss)
+            return loss, [tf.summary.scalar("generator_loss", loss)]
         else:
             return loss
