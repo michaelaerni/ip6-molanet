@@ -187,16 +187,31 @@ def conv2d(
         return result, w, b
 
 
-def resize_conv2d(self,
-                   features: tf.Tensor,
-                   feature_count: int,
-                   output_size: int,
-                   name: str,
-                   keep_prob: float,
-                   filter_size: int,
-                   concat_activations=None,
-                   use_batchnorm=True,
-                   do_activation=True):
+def resize_conv2d(input_tensor: tf.Tensor,
+                  feature_count: int,
+                  name: str,
+                  filter_size: int,
+                  output_shape_2d: Tuple[tf.Tensor, tf.Tensor],
+                  keep_probability: tf.Tensor = None,
+                  concat_activations: tf.Tensor = None,
+                  do_batchnorm: bool = True,
+                  do_activation: bool = True,
+                  data_format: str = "NHWC"
+                  ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    # Check data format and select input feature count
+
+    tf.assert_rank(input_tensor, 4)
+    if data_format == "NHWC":
+        concat_axis = 3
+        resized = tf.image.resize_nearest_neighbor(input_tensor, (output_shape_2d[1], output_shape_2d[0]),
+                                                   name=f"{name}_resize")
+    elif data_format == "NCHW":
+        concat_axis = 1
+        resized = tf.image.resize_nearest_neighbor(input_tensor, (output_shape_2d[0], output_shape_2d[1]),
+                                                   name=f"{name}_resize")
+    else:
+        raise ValueError(f"Unsupported data format {data_format}")
+
     """
     this method assumes the features are of shape [B
 
@@ -212,7 +227,6 @@ def resize_conv2d(self,
     # TODO fix by using tf.image.resize_image_with_crop_or_pad() but we NEED nearest neighbour (default is Bilinear)
 
     # scale does not preserve aspect ration but NxN images should be fine
-    resized = tf.image.resize_nearest_neighbor(features, (output_size, output_size), name=f"{name}_resize")
 
     # padding = tf.constant(output_size - (resized.get_shape().as_list()[1] * 2 - filter_size + 1))
     # resized_padded = tf.cond(padding > 0, lambda: tf.image.pad_to_bounding_box(resized, padding, padding,
@@ -220,15 +234,19 @@ def resize_conv2d(self,
     #                                                                            output_size +2*padding),
     #                          lambda: resized)
 
+    conv, w, b = conv2d(resized,
+                        feature_count,
+                        f"{name}_conv2d", filter_size,
+                        stride=1,
+                        do_batchnorm=do_batchnorm,
+                        do_activation=do_activation,
+                        data_format=data_format)
 
-    conv, w, b = self._conv2d(resized, feature_count, f"{name}_conv2d", filter_size, use_batchnorm, stride=1,
-                              do_activation=do_activation)
-
-    if use_batchnorm:
+    if do_batchnorm:
         bn = tf.contrib.layers.batch_norm(conv, decay=0.9, epsilon=1e-5, fused=True)  # TODO: Params?
     else:
         bn = conv
-    d = tf.nn.dropout(bn, keep_prob)
+    d = tf.nn.dropout(bn, keep_probability)
 
     if do_activation:
         a = tf.nn.relu(d)
@@ -237,6 +255,6 @@ def resize_conv2d(self,
 
     # Concat activations if available
     if concat_activations is not None:
-        a = tf.concat([a, concat_activations], axis=3)
+        a = tf.concat([a, concat_activations], axis=concat_axis)
 
     return a, w, b
