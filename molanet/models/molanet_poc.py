@@ -102,8 +102,8 @@ def molanet_main(args: [str]):
     # )
     network_factory = UnetFactory(
         spatial_extent=512,
-        min_discriminator_features=16,
-        max_discriminator_features=128,
+        min_discriminator_features=32,
+        max_discriminator_features=512,
         convolutions_per_level=1
     )
 
