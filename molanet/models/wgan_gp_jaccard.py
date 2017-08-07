@@ -34,13 +34,11 @@ class WassersteinJaccardFactory(ObjectiveFactory):
 
             # Generated samples should be close to their inverse jaccard index => Loss defined
             # Generator samples have to be first converted into range [0, 1]
-            generated_jaccard_loss = 1.0 - jaccard_index(
+            generated_jaccard_loss = tf.constant(1.0) - jaccard_index(
                 values=tanh_to_sigmoid(generator),
                 labels=tanh_to_sigmoid(y)
             )
-            loss_generated = tf.reduce_mean(
-                tf.squared_difference(generated_jaccard_loss, generator_discriminator)
-            )
+            loss_generated = tf.nn.l2_loss(generated_jaccard_loss - generator_discriminator)
 
             # Real samples should all be 0 => No loss
             loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
