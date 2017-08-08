@@ -162,11 +162,17 @@ def _create_concatenated_images(
         y = tf.transpose(y, [0, 2, 3, 1])
         generated_y = tf.transpose(generated_y, [0, 2, 3, 1])
 
+    # Generate difference image, RED is false positives, BLUE is false negatives
+    difference = tf.subtract(generated_y, y)
+    difference_positive = tf.clip_by_value(difference, 0.0, 1.0)
+    difference_negative = tf.abs(tf.clip_by_value(difference, -1.0, 0.0))
+    difference_image = tf.concat([difference_positive, tf.zeros_like(difference), difference_negative], axis=3)
+
     return tf.cast(tf.round(tf.concat([
         (color_converter.convert_back(x) + 1.0) / 2.0 * 255.0,
         tf.tile((y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
         tf.tile((generated_y + 1.0) / 2.0 * 255.0, multiples=[1, 1, 1, 3]),
-        tf.tile(tf.abs(tf.subtract(generated_y, y)), multiples=[1, 1, 1, 3]) * 255.0
+        difference_image * 255.0
     ], axis=2)), dtype=tf.uint8)
 
 
