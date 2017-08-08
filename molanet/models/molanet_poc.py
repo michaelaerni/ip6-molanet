@@ -108,7 +108,7 @@ def molanet_main(args: [str]):
             session_configuration=config,
             use_gpu=not args.no_gpu,
             data_format=data_format),
-        learning_rate=0.0001, beta1=0, beta2=0.9)  # TODO: Change those parameters back to something (normal?)
+        learning_rate=0.0001, beta1=0.5, beta2=0.9)  # TODO: Change those parameters back to something (normal?)
     print("Trainer created")
 
     with trainer:
