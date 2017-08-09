@@ -119,7 +119,7 @@ class BigDiscPix2Pix(NetworkFactory):
             return_input_tensor: bool = False,
             use_gpu: bool = True,
             data_format: str = "NHWC",
-            multiply_mask: bool = False,
+            multiply_mask: bool = True,
     ) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
         with tf.variable_scope("discriminator", reuse=reuse), tf.device(select_device(use_gpu)):
             concat_axis = 3 if data_format == "NHWC" else 1
