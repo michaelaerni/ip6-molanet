@@ -101,13 +101,14 @@ class BigDiscPix2Pix(NetworkFactory):
     def _conv_act_convstride2(sefl, features: tf.Tensor, depth_maps: int, filter_size: int, data_format: str,
                               name: str):
         conv, _, _ = conv2d(features, depth_maps, f"{name}", filter_size, 1, do_batchnorm=False,
-                            do_activation=False,
+                            do_activation=True,
                             data_format=data_format)
-        activated_conv = tf.nn.relu(conv, f"{name}_relu")
+        # activated_conv = tf.nn.relu(conv, f"{name}_relu")
 
-        strided, _, _ = conv2d(activated_conv, depth_maps, f"{name}_strided", filter_size, 2,
+        strided, _, _ = conv2d(conv, depth_maps, f"{name}_strided", filter_size, 2,
                                do_batchnorm=False,
-                               do_activation=False, data_format=data_format)
+                               do_activation=False,
+                               data_format=data_format)
         return strided
 
     def create_discriminator(
@@ -138,20 +139,17 @@ class BigDiscPix2Pix(NetworkFactory):
                 y = tf.multiply(y, x)
                 print("y*x shape", y.get_shape())
 
-            mask, _, _ = conv2d(y, 64, "disc_y_conv", 5, 1, do_batchnorm=False, do_activation=False,
+            mask, _, _ = conv2d(y, 64, "disc_y_conv", 5, 1, do_batchnorm=False, do_activation=True,
                                 data_format=data_format)
-            mask = tf.nn.relu(mask)
             print("shape mask", mask.get_shape())
 
             # image pipeline
-            x1, _, _ = conv2d(x, 16, "x1", 5, stride=1, do_batchnorm=False, do_activation=False,
+            x1, _, _ = conv2d(x, 16, "x1", 5, stride=1, do_batchnorm=False, do_activation=True,
                               data_format=data_format)
-            x1 = tf.nn.relu(x1)
             print("shape x1", x1.get_shape())
 
-            x2, _, _ = conv2d(x1, 64, "x2", 5, stride=1, do_batchnorm=False, do_activation=False,
+            x2, _, _ = conv2d(x1, 64, "x2", 5, stride=1, do_batchnorm=False, do_activation=True,
                               data_format=data_format)
-            x2 = tf.nn.relu(x2)
             print("shape x2", x2.get_shape())
 
             # concat
@@ -174,7 +172,7 @@ class BigDiscPix2Pix(NetworkFactory):
                 layer_size = layer_size // 2
                 depth_map_count = depth_map_count * 2 if depth_map_count < self._max_discriminator_features else self._max_discriminator_features
 
-            output, _, _ = conv2d(xyK, 1, "final", 3, 1, do_batchnorm=False, do_activation=False,
+            output, _, _ = conv2d(xyK, 1, "final", 1, 1, do_batchnorm=False, do_activation=False,
                                   data_format=data_format)
 
             # xy3, _, _ = conv2d(xy2, 512, "conv_xy_3", 3, 1, do_batchnorm=False, do_activation=False,
