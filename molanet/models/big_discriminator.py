@@ -99,11 +99,14 @@ class BigDiscPix2Pix(NetworkFactory):
         return maximally_activated_conv
 
     def _conv_act_convstride2(sefl, features: tf.Tensor, depth_maps: int, filter_size: int, data_format: str,
-                              name: str):
+                              name: str,
+                              dropout_keep_prob: float = None):
         conv, _, _ = conv2d(features, depth_maps, f"{name}", filter_size, 1, do_batchnorm=False,
                             do_activation=True,
                             data_format=data_format)
         # activated_conv = tf.nn.relu(conv, f"{name}_relu")
+        if dropout_keep_prob != None:
+            conv = tf.nn.dropout(conv, dropout_keep_prob, name=f"{name}_dropout")
 
         strided, _, _ = conv2d(conv, depth_maps, f"{name}_strided", filter_size, 2,
                                do_batchnorm=False,
