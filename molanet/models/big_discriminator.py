@@ -166,11 +166,16 @@ class BigDiscPix2Pix(NetworkFactory):
             depth_map_count = self._min_discriminator_features
             while layer_size > 1:
                 k += 1
+                # use dropout on conv layers
+                # increasing probability to drop
+                # 0.1 0.2 0.3
+
                 xyK = self._conv_act_convstride2(xyK,
                                                  depth_maps=depth_map_count,
                                                  filter_size=3,
                                                  data_format=data_format,
-                                                 name=f"xy{k}")
+                                                 name=f"xy{k}",
+                                                 dropout_keep_prob=0.9 if k == 1 else 0.8)
                 print(f"shape xy{k}", xyK.get_shape())
                 layer_size = layer_size // 2
                 depth_map_count = depth_map_count * 2 if depth_map_count < self._max_discriminator_features else self._max_discriminator_features
