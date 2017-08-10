@@ -94,7 +94,8 @@ if __name__ == "__main__":
         dropout_keep_probability=0.5,
         dropout_layer_count=2,
         use_batchnorm=True,
-        weight_initializer=tf.truncated_normal_initializer(stddev=0.02)
+        weight_initializer=tf.truncated_normal_initializer(stddev=0.02),
+        multiply_mask=False
     )
 
     trainer = NetworkTrainer(
