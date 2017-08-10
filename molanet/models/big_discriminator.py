@@ -105,7 +105,7 @@ class BigDiscPix2Pix(NetworkFactory):
                             do_activation=True,
                             data_format=data_format)
         # activated_conv = tf.nn.relu(conv, f"{name}_relu")
-        if dropout_keep_prob != None:
+        if dropout_keep_prob is not None:
             conv = tf.nn.dropout(conv, dropout_keep_prob, name=f"{name}_dropout")
 
         strided, _, _ = conv2d(conv, depth_maps, f"{name}_strided", filter_size, 2,
