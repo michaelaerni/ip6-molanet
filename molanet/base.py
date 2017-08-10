@@ -202,6 +202,7 @@ class NetworkTrainer(object):
             beta1: float = 0.9,
             beta2: float = 0.999):
         self._training_options = training_options
+        self._restored_iteration = None
 
         # Create input pipelines
         with use_cpu():
@@ -347,8 +348,9 @@ class NetworkTrainer(object):
 
         tf.get_default_graph().finalize()
 
-        # TODO: Does this work with restore?
-        self._sess.run(init_ops)
+        if self._restored_iteration is None:
+            self._sess.run(init_ops)
+
         iteration = self._sess.run(self._global_step)
 
         print("Starting training")
@@ -359,7 +361,7 @@ class NetworkTrainer(object):
                 iteration = self._sess.run(self._step_op)
 
                 if current_iteration % self._training_options.save_model_interval == 0:
-                    self._train_saver.save(self._sess, save_model_path, global_step=iteration)
+                    self._train_saver.save(self._sess, save_model_path, global_step=self._global_step)
                     print(f"Saved model from iteration {iteration}")
 
                 # Run CV validation
@@ -446,6 +448,8 @@ class NetworkTrainer(object):
             raise RuntimeError("A running session is required to restore a model")
 
         self._train_saver.restore(self._sess, os.path.join(self._training_options.summary_directory, f"model.ckpt-{iteration}"))
+        self._restored_iteration = self._sess.run(self._global_step)
+        print(f"Iteration {self._restored_iteration} restored")
 
 
 class NetworkEvaluator(object):
