@@ -178,15 +178,6 @@ class BigDiscPix2Pix(NetworkFactory):
             output, _, _ = conv2d(xyK, 1, "final", 1, 1, do_batchnorm=False, do_activation=False,
                                   data_format=data_format)
 
-            # xy3, _, _ = conv2d(xy2, 512, "conv_xy_3", 3, 1, do_batchnorm=False, do_activation=False,
-            #                    data_format=data_format)
-            # xy3 = tf.nn.relu(xy3, "activation_xy_3")
-            # print("shape xy3",xy3.get_shape())
-            #
-            #
-            # xy4, _, _ = conv2d(xy3, 2, "conv_xy_final", 3, 1, do_batchnorm=False, do_activation=False,
-            #                    data_format=data_format)
-
 
 
             print("final shape", output.get_shape())
@@ -195,19 +186,6 @@ class BigDiscPix2Pix(NetworkFactory):
                 return output, xy
             else:
                 return output
-
-    def _create_discriminator_small_fov(
-            self,
-            x: tf.Tensor,
-            y: tf.Tensor,
-            reuse: bool = False,
-            return_input_tensor: bool = False,
-            use_gpu: bool = True, data_format: str = "NHWC") -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
-        with tf.variable_scope("discriminator", reuse=reuse), tf.device(select_device(use_gpu)):
-            concat_axis = 3 if data_format == "NHWC" else 1
-
-            raise NotImplementedError("TODO ohno")
-
 
 class Pix2PixLossFactory(ObjectiveFactory):
     def __init__(self, l1_lambda: float):
