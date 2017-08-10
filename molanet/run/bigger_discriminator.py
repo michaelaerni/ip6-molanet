@@ -9,7 +9,7 @@ import tensorflow as tf
 from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
     EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb, RGBToLabConverter
-from molanet.models.pix2pix import Pix2PixFactory, Pix2PixLossFactory
+from molanet.models.big_discriminator import BigDiscPix2Pix, Pix2PixLossFactory
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
@@ -28,10 +28,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nchw", action="store_true", help="Uses NCHW format for training and inference")
     parser.add_argument("--discriminator-iterations", type=int, default=1, help="Number of discriminator iterations")
     parser.add_argument("--gradient-lambda", type=int, default=10, help="Discriminator gradient penalty lambda")
-    parser.add_argument("--cv-interval", type=int, default=100, help="Cross-validation interval")
-    parser.add_argument("--l1-lambda", type=int, default=0, help="Generator loss l1 lambda")
-    parser.add_argument("--convert-colors", action="store_true",
-                        help="If specified, converts the input images from RGB to CIE Lab color space")
+    parser.add_argument("--cv-interval", type=int, default=200, help="Cross-validation interval")
     parser.add_argument("--max-iterations", type=int,
                         help="Maximum number of iterations before training stops")
     parser.add_argument("--xla", action="store_true",
@@ -90,7 +87,7 @@ def molanet_main(args: [str]):
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
         print("Enabled JIT XLA compilation")
 
-    network_factory = Pix2PixFactory(
+    network_factory = BigDiscPix2Pix(
         spatial_extent=512
     )
 
@@ -98,7 +95,7 @@ def molanet_main(args: [str]):
         training_pipeline,
         cv_pipeline,
         network_factory,
-        Pix2PixLossFactory(args.l1_lambda),
+        Pix2PixLossFactory(0),
         training_options=TrainingOptions(
             cv_summary_interval=args.cv_interval,
             summary_directory=logdir,
