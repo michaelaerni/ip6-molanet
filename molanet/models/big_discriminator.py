@@ -16,7 +16,8 @@ class BigDiscPix2Pix(NetworkFactory):
             dropout_keep_probability: float = 0.5,
             dropout_layer_count: int = 2,
             use_batchnorm: bool = True,
-            weight_initializer=tf.truncated_normal_initializer(stddev=0.02)):
+            weight_initializer=tf.truncated_normal_initializer(stddev=0.02),
+            multiply_mask: bool = False):
 
         # TODO: weight_initializer is currently ignored
 
@@ -32,6 +33,7 @@ class BigDiscPix2Pix(NetworkFactory):
         self._dropout_keep_probability = tf.constant(dropout_keep_probability)
         self._use_batchnorm = use_batchnorm
         self._weight_initializer = weight_initializer
+        self._multiply_mask = multiply_mask
 
     def create_generator(self, x: tf.Tensor, reuse: bool = False, use_gpu: bool = True,
                          data_format: str = "NHWC") -> tf.Tensor:
@@ -89,6 +91,7 @@ class BigDiscPix2Pix(NetworkFactory):
 
             return tf.tanh(input_tensor, name="dec_activation")
 
+    @staticmethod
     def _conv_act_pool(self, features: tf.Tensor, depth_maps: int, data_format, layer: int):
         conv = conv2d(features, depth_maps, f"conv_xy_{layer}", 3, 1, do_batchnorm=False, do_activation=False,
                       data_format=data_format)
@@ -98,19 +101,24 @@ class BigDiscPix2Pix(NetworkFactory):
                                                   f"pool_xy_{layer}")
         return maximally_activated_conv
 
+    @staticmethod
     def _conv_act_convstride2(sefl, features: tf.Tensor, depth_maps: int, filter_size: int, data_format: str,
                               name: str,
                               dropout_keep_prob: float = None):
-        conv, _, _ = conv2d(features, depth_maps, f"{name}", filter_size, 1, do_batchnorm=False,
+        conv, _, _ = conv2d(features, depth_maps, f"{name}",
+                            filter_size,
+                            stride=1,
+                            do_batchnorm=False,
                             do_activation=True,
                             data_format=data_format)
-        # activated_conv = tf.nn.relu(conv, f"{name}_relu")
         if dropout_keep_prob is not None:
             conv = tf.nn.dropout(conv, dropout_keep_prob, name=f"{name}_dropout")
 
-        strided, _, _ = conv2d(conv, depth_maps, f"{name}_strided", filter_size, 2,
+        strided, _, _ = conv2d(conv, depth_maps, f"{name}_strided",
+                               filter_size,
+                               stride=2,
                                do_batchnorm=False,
-                               do_activation=False,
+                               do_activation=True,
                                data_format=data_format)
         return strided
 
@@ -121,8 +129,7 @@ class BigDiscPix2Pix(NetworkFactory):
             reuse: bool = False,
             return_input_tensor: bool = False,
             use_gpu: bool = True,
-            data_format: str = "NHWC",
-            multiply_mask: bool = True,
+            data_format: str = "NHWC"
     ) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
         with tf.variable_scope("discriminator", reuse=reuse), tf.device(select_device(use_gpu)):
             concat_axis = 3 if data_format == "NHWC" else 1
@@ -138,7 +145,7 @@ class BigDiscPix2Pix(NetworkFactory):
             print("x shape", x.get_shape())
 
             # mask pipeline
-            if multiply_mask:
+            if self._multiply_mask:
                 y = tf.multiply(y, x)
                 print("y*x shape", y.get_shape())
 
