@@ -9,7 +9,7 @@ from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
     EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb
 from molanet.models.pix2pix import Pix2PixFactory
-from molanet.models.wgan_gp_jaccard import WassersteinJaccardFactory
+from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         training_pipeline,
         cv_pipeline,
         network_factory,
-        WassersteinJaccardFactory(gradient_lambda=10, network_factory=network_factory),
+        WassersteinGradientPenaltyFactory(gradient_lambda=10, network_factory=network_factory, l1_lambda=0.0),
         training_options=TrainingOptions(
             cv_summary_interval=args.cv_interval,
             summary_directory=logdir,
