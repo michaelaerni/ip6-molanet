@@ -9,7 +9,7 @@ import tensorflow as tf
 from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
     EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb, RGBToLabConverter
-from molanet.models.unet import UnetFactory
+from molanet.models.big_discriminator import BigDiscPix2Pix
 from molanet.models.wgan_gp_jaccard import WassersteinJaccardFactory
 
 
@@ -91,11 +91,8 @@ def molanet_main(args: [str]):
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
         print("Enabled JIT XLA compilation")
 
-    network_factory = UnetFactory(
-        spatial_extent=512,
-        min_discriminator_features=32,
-        max_discriminator_features=512,
-        convolutions_per_level=2
+    network_factory = BigDiscPix2Pix(
+        spatial_extent=512
     )
 
     trainer = NetworkTrainer(
@@ -111,7 +108,7 @@ def molanet_main(args: [str]):
             session_configuration=config,
             use_gpu=not args.no_gpu,
             data_format=data_format),
-        learning_rate=0.0001, beta1=0, beta2=0.9)  # TODO: Change those parameters back to something (normal?)
+        learning_rate=0.0001, beta1=0.5, beta2=0.9)  # TODO: Change those parameters back to something (normal?)
     print("Trainer created")
 
     with trainer:
