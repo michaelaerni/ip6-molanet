@@ -92,7 +92,7 @@ class BigDiscPix2Pix(NetworkFactory):
             return tf.tanh(input_tensor, name="dec_activation")
 
     @staticmethod
-    def _conv_act_pool(self, features: tf.Tensor, depth_maps: int, data_format, layer: int):
+    def _conv_act_pool(features: tf.Tensor, depth_maps: int, data_format, layer: int):
         conv = conv2d(features, depth_maps, f"conv_xy_{layer}", 3, 1, do_batchnorm=False, do_activation=False,
                       data_format=data_format)
         activated_conv = tf.nn.relu(conv, f"activation_xy_{layer}")
@@ -102,17 +102,26 @@ class BigDiscPix2Pix(NetworkFactory):
         return maximally_activated_conv
 
     @staticmethod
-    def _conv_act_convstride2(sefl, features: tf.Tensor, depth_maps: int, filter_size: int, data_format: str,
+    def _conv_act_convstride2(features: tf.Tensor, depth_maps: int, filter_size: int, data_format: str,
                               name: str,
-                              dropout_keep_prob: float = None):
+                              dropout_keep_prob: float = None,
+                              layer_norm: bool = True):
         conv, _, _ = conv2d(features, depth_maps, f"{name}",
                             filter_size,
                             stride=1,
                             do_batchnorm=False,
-                            do_activation=True,
+                            do_activation=False,
                             data_format=data_format)
+
         if dropout_keep_prob is not None:
             conv = tf.nn.dropout(conv, dropout_keep_prob, name=f"{name}_dropout")
+
+        def leaky_relu_func(features):
+            return tf.maximum(0.2 * features, features)
+
+        if layer_norm:
+            # TODO reuse?
+            conv = tf.contrib.layers.layer_norm(conv, activation_fn=leaky_relu_func)
 
         strided, _, _ = conv2d(conv, depth_maps, f"{name}_strided",
                                filter_size,
@@ -120,6 +129,11 @@ class BigDiscPix2Pix(NetworkFactory):
                                do_batchnorm=False,
                                do_activation=True,
                                data_format=data_format)
+
+        if layer_norm:
+            # TODO reuse?
+            strided = tf.contrib.layers.layer_norm(strided, activation_fn=leaky_relu_func)
+
         return strided
 
     def create_discriminator(
@@ -141,9 +155,6 @@ class BigDiscPix2Pix(NetworkFactory):
             Stanford background dataset
             """
 
-            print("y shape", y.get_shape())
-            print("x shape", x.get_shape())
-
             # mask pipeline
             if self._multiply_mask:
                 y = tf.multiply(y, x)
@@ -151,20 +162,16 @@ class BigDiscPix2Pix(NetworkFactory):
 
             mask, _, _ = conv2d(y, 64, "disc_y_conv", 5, 1, do_batchnorm=False, do_activation=True,
                                 data_format=data_format)
-            print("shape mask", mask.get_shape())
 
             # image pipeline
             x1, _, _ = conv2d(x, 16, "x1", 5, stride=1, do_batchnorm=False, do_activation=True,
                               data_format=data_format)
-            print("shape x1", x1.get_shape())
 
             x2, _, _ = conv2d(x1, 64, "x2", 5, stride=1, do_batchnorm=False, do_activation=True,
                               data_format=data_format)
-            print("shape x2", x2.get_shape())
 
             # concat
             xy = tf.concat([x2, mask], axis=concat_axis)
-            print("shape xy", xy.get_shape())
 
             # downsample to 1x1
             layer_size = self._spatial_extent
@@ -181,18 +188,13 @@ class BigDiscPix2Pix(NetworkFactory):
                                                  depth_maps=depth_map_count,
                                                  filter_size=3,
                                                  data_format=data_format,
-                                                 name=f"xy{k}",
-                                                 dropout_keep_prob=0.9 if k == 1 else 0.8)
-                print(f"shape xy{k}", xyK.get_shape())
+                                                 name=f"xy{k}")
+                # print(f"shape xy{k}", xyK.get_shape())
                 layer_size = layer_size // 2
                 depth_map_count = depth_map_count * 2 if depth_map_count < self._max_discriminator_features else self._max_discriminator_features
 
             output, _, _ = conv2d(xyK, 1, "final", 1, 1, do_batchnorm=False, do_activation=False,
                                   data_format=data_format)
-
-
-
-            print("final shape", output.get_shape())
 
             if return_input_tensor:
                 return output, xy
