@@ -1,15 +1,15 @@
 import argparse
 import os
 import shutil
-import sys
 from datetime import datetime
 
 import tensorflow as tf
 
 from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
-    EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb, RGBToLabConverter
-from molanet.models.big_discriminator import BigDiscPix2Pix, Pix2PixLossFactory
+    EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb
+from molanet.models.big_discriminator import BigDiscPix2Pix
+from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
@@ -26,8 +26,6 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-gpu", action="store_true", help="Run everything on CPU")
     parser.add_argument("--logsubdir", action="store_true", help="Create a subdirectory in logdir for each new run")
     parser.add_argument("--nchw", action="store_true", help="Uses NCHW format for training and inference")
-    parser.add_argument("--discriminator-iterations", type=int, default=1, help="Number of discriminator iterations")
-    parser.add_argument("--gradient-lambda", type=int, default=10, help="Discriminator gradient penalty lambda")
     parser.add_argument("--cv-interval", type=int, default=200, help="Cross-validation interval")
     parser.add_argument("--max-iterations", type=int,
                         help="Maximum number of iterations before training stops")
@@ -36,13 +34,13 @@ def create_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def molanet_main(args: [str]):
+if __name__ == "__main__":
     parser = create_arg_parser()
-    args = parser.parse_args(args)
+    args = parser.parse_args()
 
     if args.logsubdir and args.restore is None:
         now = datetime.now()
-        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}"
+        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}_base_architecture"
         logdir = os.path.join(args.logdir, subdirname)
     else:
         logdir = args.logdir
@@ -61,10 +59,10 @@ def molanet_main(args: [str]):
         lambda image, segmentation: (random_brightness_rgb(image, -0.3, 0.3), segmentation)
     ]
 
-    color_converter = RGBToLabConverter() if args.convert_colors else None
+    # No color conversion
+    color_converter = None
 
     # Create input pipelines
-    # TODO: Image size is hardcoded
     training_pipeline = TrainingPipeline(args.sampledir, args.train_set, image_size=512,
                                          color_converter=color_converter,
                                          data_format=data_format,
@@ -80,7 +78,7 @@ def molanet_main(args: [str]):
     print(f"CV set size: {cv_pipeline.sample_count}")
 
     if args.debug_placement:
-        print("Device placement logging is enabled")
+        print("Enabled device placement logging")
 
     config = tf.ConfigProto(log_device_placement=args.debug_placement)
     if args.xla:
@@ -88,23 +86,31 @@ def molanet_main(args: [str]):
         print("Enabled JIT XLA compilation")
 
     network_factory = BigDiscPix2Pix(
-        spatial_extent=512
+        spatial_extent=512,
+        min_generator_features=64,
+        max_generator_features=1024,
+        min_discriminator_features=64,
+        max_discriminator_features=1024,
+        dropout_keep_probability=0.5,
+        dropout_layer_count=2,
+        use_batchnorm=True,
+        weight_initializer=tf.truncated_normal_initializer(stddev=0.02)
     )
 
     trainer = NetworkTrainer(
         training_pipeline,
         cv_pipeline,
         network_factory,
-        Pix2PixLossFactory(0),
+        WassersteinGradientPenaltyFactory(gradient_lambda=10, network_factory=network_factory, l1_lambda=0.0),
         training_options=TrainingOptions(
             cv_summary_interval=args.cv_interval,
             summary_directory=logdir,
-            discriminator_iterations=args.discriminator_iterations,
+            discriminator_iterations=5,
             max_iterations=args.max_iterations,
             session_configuration=config,
             use_gpu=not args.no_gpu,
             data_format=data_format),
-        learning_rate=0.0001, beta1=0.5, beta2=0.9)  # parameters suggested in improved-WGAN paper
+        learning_rate=0.0001, beta1=0.5, beta2=0.9)
     print("Trainer created")
 
     with trainer:
@@ -116,6 +122,3 @@ def molanet_main(args: [str]):
 
         print("Starting training")
         trainer.train()
-
-if __name__ == "__main__":
-    molanet_main(sys.argv[1:]) # first argument is the name of this script
