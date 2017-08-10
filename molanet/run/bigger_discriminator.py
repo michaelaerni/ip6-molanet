@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     if args.logsubdir and args.restore is None:
         now = datetime.now()
-        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}_base_architecture"
+        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}_bigger_discriminator"
         logdir = os.path.join(args.logdir, subdirname)
     else:
         logdir = args.logdir
