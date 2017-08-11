@@ -1,7 +1,7 @@
 import math
-from typing import Union, List
+from typing import Union
 
-from molanet.base import NetworkFactory, ObjectiveFactory
+from molanet.base import NetworkFactory
 from molanet.operations import *
 
 
@@ -94,7 +94,7 @@ class BigDiscPix2Pix(NetworkFactory):
             return tf.tanh(input_tensor, name="dec_activation")
 
     @classmethod
-    def _conv_act_pool(self, features: tf.Tensor, depth_maps: int, data_format, layer: int):
+    def _conv_act_pool(cls, features: tf.Tensor, depth_maps: int, data_format, layer: int):
         conv = conv2d(features, depth_maps, f"conv_xy_{layer}", 3, 1, do_batchnorm=False, do_activation=False,
                       data_format=data_format)
         activated_conv = tf.nn.relu(conv, f"activation_xy_{layer}")
@@ -104,15 +104,15 @@ class BigDiscPix2Pix(NetworkFactory):
         return maximally_activated_conv
 
     @classmethod
-    def _leaky_relu_func(self, features):
+    def _leaky_relu_func(cls, features):
         return tf.maximum(0.2 * features, features)
 
     @classmethod
-    def _layer_norm(self, features):
-        return tf.contrib.layers.layer_norm(features, activation_fn=self._leaky_relu_func)
+    def _layer_norm(cls, features):
+        return tf.contrib.layers.layer_norm(features, activation_fn=cls._leaky_relu_func)
 
     @classmethod
-    def _conv_act_convstride2(self, features: tf.Tensor, depth_maps: int, filter_size: int, data_format: str,
+    def _conv_act_convstride2(cls, features: tf.Tensor, depth_maps: int, filter_size: int, data_format: str,
                               name: str,
                               dropout_keep_prob: float = None,
                               layer_norm: bool = False):
@@ -126,11 +126,9 @@ class BigDiscPix2Pix(NetworkFactory):
         if dropout_keep_prob is not None:
             conv = tf.nn.dropout(conv, dropout_keep_prob, name=f"{name}_dropout")
 
-
-
         if layer_norm:
             # TODO reuse?
-            conv = self._layer_norm(conv)
+            conv = cls._layer_norm(conv)
 
         strided, _, _ = conv2d(conv, depth_maps, f"{name}_strided",
                                filter_size,
@@ -141,7 +139,7 @@ class BigDiscPix2Pix(NetworkFactory):
 
         if layer_norm:
             # TODO reuse?
-            strided = tf.contrib.layers.layer_norm(strided, activation_fn=leaky_relu_func)
+            strided = tf.contrib.layers.layer_norm(strided, activation_fn=cls._leaky_relu_func)
 
         return strided
 
@@ -191,7 +189,7 @@ class BigDiscPix2Pix(NetworkFactory):
             # downsample to 1x1
             layer_size = self._spatial_extent
             k = 0
-            xyK = xy
+            xy_k = xy
             depth_map_count = self._min_discriminator_features
             while layer_size > 1:
                 k += 1
@@ -199,78 +197,21 @@ class BigDiscPix2Pix(NetworkFactory):
                 # increasing probability to drop
                 # 0.1 0.2 0.3
 
-                xyK = self._conv_act_convstride2(xyK,
-                                                 depth_maps=depth_map_count,
-                                                 filter_size=3,
-                                                 data_format=data_format,
-                                                 name=f"xy{k}",
-                                                 layer_norm=self._use_layer_norm)
+                xy_k = self._conv_act_convstride2(xy_k,
+                                                  depth_maps=depth_map_count,
+                                                  filter_size=3,
+                                                  data_format=data_format,
+                                                  name=f"xy{k}",
+                                                  layer_norm=self._use_layer_norm)
                 # print(f"shape xy{k}", xyK.get_shape())
                 layer_size = layer_size // 2
-                depth_map_count = depth_map_count * 2 if depth_map_count < self._max_discriminator_features else self._max_discriminator_features
+                depth_map_count = depth_map_count * 2 if depth_map_count < self._max_discriminator_features \
+                    else self._max_discriminator_features
 
-            output, _, _ = conv2d(xyK, 1, "final", 1, 1, do_batchnorm=False, do_activation=False,
+            output, _, _ = conv2d(xy_k, 1, "final", 1, 1, do_batchnorm=False, do_activation=False,
                                   data_format=data_format)
 
             if return_input_tensor:
                 return output, xy
             else:
                 return output
-
-class Pix2PixLossFactory(ObjectiveFactory):
-    def __init__(self, l1_lambda: float):
-        self._l1_lambda = tf.constant(l1_lambda, dtype=tf.float32)
-
-    def create_discriminator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
-                                  generator_discriminator: tf.Tensor, real_discriminator: tf.Tensor,
-                                  apply_summary: bool = True, use_gpu: bool = True,
-                                  data_format: str = "NHWC") -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
-        with tf.device(select_device(use_gpu)):
-            loss_real = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(
-                    logits=real_discriminator,
-                    labels=tf.ones_like(generator_discriminator))
-            )
-            loss_generated = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(
-                    logits=generator_discriminator,
-                    labels=tf.zeros_like(generator_discriminator))
-            )
-
-        loss = loss_real + loss_generated
-
-        if apply_summary:
-            summary_ops = [
-                tf.summary.scalar("discriminator_loss", loss),
-                tf.summary.scalar("discriminator_loss_real", loss_real),
-                tf.summary.scalar("discriminator_loss_generated", loss_generated)
-            ]
-
-            return loss, summary_ops
-        else:
-            return loss
-
-    def create_generator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
-                              generator_discriminator: tf.Tensor,
-                              apply_summary: bool = True, use_gpu: bool = True,
-                              data_format: str = "NHWC") -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
-        with tf.device(select_device(use_gpu)):
-            loss_discriminator = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(
-                    logits=generator_discriminator,
-                    labels=tf.ones_like(generator_discriminator))
-            )
-            l1_loss = tf.reduce_mean(tf.abs(tf.subtract(y, generator)))
-
-        loss = loss_discriminator + self._l1_lambda * l1_loss
-
-        if apply_summary:
-            summary_ops = [
-                tf.summary.scalar("generator_loss", loss),
-                tf.summary.scalar("generator_loss_discriminator", loss_discriminator),
-                tf.summary.scalar("generator_loss_l1_unscaled", l1_loss)
-            ]
-
-            return loss, summary_ops
-        else:
-            return loss
