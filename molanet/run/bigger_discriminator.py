@@ -29,6 +29,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cv-interval", type=int, default=200, help="Cross-validation interval")
     parser.add_argument("--max-iterations", type=int,
                         help="Maximum number of iterations before training stops")
+    parser.add_argument("--use-layer-norm", action="store_true", help="Use layer norm in discriminator")
     parser.add_argument("--xla", action="store_true",
                         help="enable JIT compilation to XLA at the session level (gpu only)")
     return parser
@@ -94,7 +95,7 @@ if __name__ == "__main__":
         dropout_keep_probability=0.5,
         dropout_layer_count=2,
         use_batchnorm=True,
-        use_layernorm=True,
+        use_layernorm=args.use_layer_norm,
         weight_initializer=tf.truncated_normal_initializer(stddev=0.02),
         multiply_mask=False
     )
