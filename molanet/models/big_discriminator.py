@@ -108,8 +108,12 @@ class BigDiscPix2Pix(NetworkFactory):
         return tf.maximum(0.2 * features, features)
 
     @classmethod
-    def _layer_norm(cls, features):
-        return tf.contrib.layers.layer_norm(features, activation_fn=cls._leaky_relu_func)
+    def _layer_norm(cls, features, do_activation: bool = False):
+        if do_activation:
+            layer_normed = tf.contrib.layers.layer_norm(features)
+            return leaky_relu(layer_normed, 0.2)
+        else:
+            return tf.contrib.layers.layer_norm(features)
 
     @classmethod
     def _conv_act_convstride2(cls, features: tf.Tensor, depth_maps: int, filter_size: int, data_format: str,
@@ -120,7 +124,7 @@ class BigDiscPix2Pix(NetworkFactory):
                             filter_size,
                             stride=1,
                             do_batchnorm=False,
-                            do_activation=False,
+                            do_activation=False if layer_norm else True,
                             data_format=data_format)
 
         if dropout_keep_prob is not None:
@@ -128,18 +132,18 @@ class BigDiscPix2Pix(NetworkFactory):
 
         if layer_norm:
             # TODO reuse?
-            conv = cls._layer_norm(conv)
+            conv = cls._layer_norm(conv, do_activation=True)
 
         strided, _, _ = conv2d(conv, depth_maps, f"{name}_strided",
                                filter_size,
                                stride=2,
                                do_batchnorm=False,
-                               do_activation=True,
+                               do_activation=False if layer_norm else True,
                                data_format=data_format)
 
         if layer_norm:
             # TODO reuse?
-            strided = tf.contrib.layers.layer_norm(strided, activation_fn=cls._leaky_relu_func)
+            strided = cls._layer_norm(strided, do_activation=True)
 
         return strided
 
@@ -167,21 +171,24 @@ class BigDiscPix2Pix(NetworkFactory):
                 y = tf.multiply(y, x)
                 print("y*x shape", y.get_shape())
 
-            mask, _, _ = conv2d(y, 64, "disc_y_conv", 5, 1, do_batchnorm=False, do_activation=True,
+            mask, _, _ = conv2d(y, 64, "disc_y_conv", 5, 1, do_batchnorm=False,
+                                do_activation=False if self._use_layer_norm else True,
                                 data_format=data_format)
             if self._use_layer_norm:
-                mask = self._layer_norm(mask)
+                mask = self._layer_norm(mask,do_activation=True)
 
             # image pipeline
-            x1, _, _ = conv2d(x, 16, "x1", 5, stride=1, do_batchnorm=False, do_activation=True,
+            x1, _, _ = conv2d(x, 16, "x1", 5, stride=1, do_batchnorm=False,
+                              do_activation=False if self._use_layer_norm else True,
                               data_format=data_format)
             if self._use_layer_norm:
-                x1 = self._layer_norm(x1)
+                x1 = self._layer_norm(x1,do_activation=True)
 
-            x2, _, _ = conv2d(x1, 64, "x2", 5, stride=1, do_batchnorm=False, do_activation=True,
+            x2, _, _ = conv2d(x1, 64, "x2", 5, stride=1, do_batchnorm=False,
+                              do_activation=False if self._use_layer_norm else True,
                               data_format=data_format)
             if self._use_layer_norm:
-                x2 = self._layer_norm(x2)
+                x2 = self._layer_norm(x2,do_activation=True)
 
             # concat
             xy = tf.concat([x2, mask], axis=concat_axis)
