@@ -194,7 +194,7 @@ class BigDiscPix2Pix(NetworkFactory):
             k = 0
             xy_k = xy
             depth_map_count = self._min_discriminator_features
-            while layer_size > 1:
+            while k < 9:  # 2^9 = 512
                 k += 1
                 # use dropout on conv layers
                 # increasing probability to drop
@@ -209,6 +209,8 @@ class BigDiscPix2Pix(NetworkFactory):
                 layer_size = layer_size // 2
                 depth_map_count = depth_map_count * 2 if depth_map_count < self._max_discriminator_features \
                     else self._max_discriminator_features
+                if k == 8:
+                    depth_map_count *= 2  # more weights on last down-sampling layer
 
             output, _, _ = conv2d(xy_k, 1, "final", 1, 1, do_batchnorm=False, do_activation=False,
                                   data_format=data_format,
