@@ -1,9 +1,13 @@
+import logging
 from typing import List, Tuple, Union
 
 import tensorflow as tf
 
 from molanet.base import ObjectiveFactory, NetworkFactory
 from molanet.operations import use_cpu, select_device
+
+
+_log = logging.getLogger(__name__)
 
 
 class WassersteinGradientPenaltyFactory(ObjectiveFactory):
@@ -77,6 +81,8 @@ class WassersteinGradientPenaltyFactory(ObjectiveFactory):
             )
 
         if self._l1_lambda > 0.0:
+            _log.info(f"Using l1 loss, lambda={self._l1_lambda}")
+
             with tf.device(select_device(use_gpu)):
                 l1_loss = tf.reduce_mean(tf.abs(tf.subtract(y, generator)))
 
