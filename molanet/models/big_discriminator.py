@@ -161,7 +161,10 @@ class BigDiscPix2Pix(NetworkFactory):
 
             # mask pipeline
             if self._multiply_mask:
-                y = tf.multiply(y, x)
+                multiplied = tf.multiply(y, x)
+                multiplied = tf.concat([multiplied, y], concat_axis)
+                y = multiplied
+
                 _log.debug(f"y*x shape: {y.get_shape()}")
 
             mask, _, _ = conv2d(y, 64, "disc_y_conv", 5, 1, do_batchnorm=False,
