@@ -38,7 +38,7 @@ class WassersteinJaccardFactory(ObjectiveFactory):
                 values=tanh_to_sigmoid(generator),
                 labels=tanh_to_sigmoid(y)
             )
-            loss_generated = tf.nn.l2_loss(generated_jaccard_loss - generator_discriminator)
+            loss_generated = tf.reduce_mean((generated_jaccard_loss - generator_discriminator) ** 2 / 2.0)
 
             # Real samples should all be 0 => No loss
             loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(

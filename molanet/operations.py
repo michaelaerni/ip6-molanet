@@ -27,7 +27,6 @@ def use_cpu():
 
 def jaccard_index(labels: tf.Tensor, values: tf.Tensor) -> tf.Tensor:
     # TODO: Document: how and why jacquard
-    # TODO: Could this be used with logits?
     # TODO: Document: Labels have to be either 0 or 1
 
     batch_size = tf.shape(labels)[0]
@@ -42,12 +41,10 @@ def jaccard_index(labels: tf.Tensor, values: tf.Tensor) -> tf.Tensor:
     # Union is the clipped sum
     union = tf.clip_by_value(tf.add(labels, values), 0.0, 1.0)
 
-    # TODO: Is dividing element-wise better for numerical stability? It is for sure slower...
     intersection_sum = tf.reduce_sum(intersection, axis=1)
     union_sum = tf.reduce_sum(union, axis=1)
 
     # Handle cases where whether labels nor values contain any positives => Are same set, therefore index is 1
-    # TODO: Is this assumption correct?
     return tf.where(
         tf.greater(union_sum, 0),
         tf.divide(intersection_sum, union_sum),  # Use normal loss formulation
