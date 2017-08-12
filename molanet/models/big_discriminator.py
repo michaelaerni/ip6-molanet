@@ -118,6 +118,7 @@ class BigDiscPix2Pix(NetworkFactory):
                             do_batchnorm=False,
                             do_activation=False if layer_norm else True,
                             data_format=data_format,
+                            padding="REFLECT",
                             weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
 
         if dropout_keep_prob is not None:
@@ -170,6 +171,7 @@ class BigDiscPix2Pix(NetworkFactory):
             mask, _, _ = conv2d(y, 64, "disc_y_conv", 5, 1, do_batchnorm=False,
                                 do_activation=False if self._use_layer_norm else True,
                                 data_format=data_format,
+                                padding="REFLECT",
                                 weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
             if self._use_layer_norm:
                 mask = self._layer_norm(mask, do_activation=True)
@@ -178,6 +180,7 @@ class BigDiscPix2Pix(NetworkFactory):
             x1, _, _ = conv2d(x, 16, "x1", 5, stride=1, do_batchnorm=False,
                               do_activation=False if self._use_layer_norm else True,
                               data_format=data_format,
+                              padding="REFLECT",
                               weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
             if self._use_layer_norm:
                 x1 = self._layer_norm(x1, do_activation=True)
@@ -185,6 +188,7 @@ class BigDiscPix2Pix(NetworkFactory):
             x2, _, _ = conv2d(x1, 64, "x2", 5, stride=1, do_batchnorm=False,
                               do_activation=False if self._use_layer_norm else True,
                               data_format=data_format,
+                              padding="REFLECT",
                               weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
             if self._use_layer_norm:
                 x2 = self._layer_norm(x2, do_activation=True)
@@ -217,6 +221,7 @@ class BigDiscPix2Pix(NetworkFactory):
 
             output, _, _ = conv2d(xy_k, 1, "final", 1, 1, do_batchnorm=False, do_activation=False,
                                   data_format=data_format,
+                                  padding="VALID",
                                   weight_initializer=tf.uniform_unit_scaling_initializer(1.15))
 
             if return_input_tensor:
