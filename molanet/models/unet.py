@@ -1,9 +1,9 @@
 import logging
-import math
-from typing import Union, List
+from typing import Union
 
-from molanet.base import NetworkFactory, ObjectiveFactory
+from molanet.base import NetworkFactory
 from molanet.operations import *
+
 
 _log = logging.getLogger(__name__)
 
