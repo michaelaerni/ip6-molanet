@@ -1,4 +1,5 @@
-from typing import Callable, Tuple
+import math
+from typing import Callable, Tuple, List
 
 import tensorflow as tf
 
@@ -60,18 +61,16 @@ def tanh_to_sigmoid(input_tensor: tf.Tensor) -> tf.Tensor:
 def _fix_padding(
         input_tensor: tf.Tensor,
         mode: str,
-        paddings_2d: tf.Tensor,
+        paddings_2d: List[List[int]],
         data_format: str) -> Tuple[str, tf.Tensor]:
 
     if mode == "SAME" or mode == "VALID":
         return mode, input_tensor
 
-    tf.assert_rank(paddings_2d, 2)
-
     if data_format == "NHWC":
-        paddings = tf.concat([[[0, 0]], paddings_2d, [[0, 0]]], axis=0)
+        paddings = [[0, 0]] + paddings_2d + [[0, 0]]
     elif data_format == "NCHW":
-        paddings = tf.concat([[[0, 0], [0, 0]], paddings_2d], axis=0)
+        paddings = [[0, 0], [0, 0]] + paddings_2d
     else:
         raise ValueError(f"Unsupported data format {data_format}")
 
@@ -95,7 +94,7 @@ def conv2d_transpose(
         do_batchnorm: bool = True,
         do_activation: bool = True,
         data_format: str = "NHWC",
-        weight_initializer: tf.Initializer = tf.uniform_unit_scaling_initializer(1.43)
+        weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
 ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
 
     with tf.name_scope(f"conv2d_transpose_{name}"):
@@ -162,41 +161,39 @@ def conv2d(
         do_batchnorm: bool = True,
         do_activation: bool = True,
         data_format: str = "NHWC",
-        weight_initializer: tf.Initializer = tf.truncated_normal_initializer(stddev=0.02)
+        weight_initializer=tf.truncated_normal_initializer(stddev=0.02)
 ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
 
     with tf.name_scope(f"conv2d_{name}"):
         # Check data format and select input feature count
         tf.assert_rank(input_tensor, 4)
         input_shape = input_tensor.get_shape()
+        input_shape_runtime = tf.shape(input_tensor)
         if data_format == "NHWC":
             input_feature_count = input_shape[-1]
             strides = [1, stride, stride, 1]
-            input_shape_2d = input_shape[1], input_shape[2]
+            input_shape_2d = input_shape_runtime[1], input_shape_runtime[2]
         elif data_format == "NCHW":
             input_feature_count = input_shape[1]
             strides = [1, 1, stride, stride]
-            input_shape_2d = input_shape[2], input_shape[3]
+            input_shape_2d = input_shape_runtime[2], input_shape_runtime[3]
         else:
             raise ValueError(f"Unsupported data format {data_format}")
 
         # Apply padding
         if padding != "SAME" and padding != "VALID":
-            # (W - F + 2P) / S + 1 = W
-            # (W - 1) * S = W - F + 2P
-            # (W - 1) * S - W + F = 2P
-            # W*S - S - W + F = 2P
-            # (F - S) - W + W*S = 2P
-            # (F - S) + W * (S - 1) = 2P = PL + PR
-            half_vertical_padding = (filter_size - stride) + input_shape_2d[0] * (stride - 1)
-            half_horizontal_padding = (filter_size - stride) + input_shape_2d[1] * (stride - 1)
-            paddings_2d = tf.convert_to_tensor([[
-                tf.cast(half_vertical_padding, tf.int32),  # Top
-                tf.cast(tf.ceil(half_vertical_padding), tf.int32)  # Bottom
+            # (W - F + 2P) / S + 1 = W / S
+            # W - F + 2P + S = W
+            # 2P = W - W + F - S
+            # 2P = PL + PR = F - S
+            half_padding = (filter_size - stride) / 2.0
+            paddings_2d = [[
+                math.ceil(half_padding),  # Top
+                int(half_padding),  # Bottom
             ], [
-                tf.cast(half_horizontal_padding, tf.int32),  # Left
-                tf.cast(tf.ceil(half_horizontal_padding), tf.int32)  # Right
-            ]])
+                math.ceil(half_padding),  # Left
+                int(half_padding)  # Right
+            ]]
             padding, input_tensor = _fix_padding(input_tensor, padding, paddings_2d, data_format)
 
         # Create variables
@@ -212,7 +209,7 @@ def conv2d(
             input_tensor,
             filter=w,
             strides=strides,
-            padding="SAME",  # TODO: Make padding configurable
+            padding=padding,
             data_format=data_format)
 
         result = tf.nn.bias_add(conv, b, data_format=data_format)
