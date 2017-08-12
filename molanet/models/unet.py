@@ -35,7 +35,6 @@ class UnetFactory(NetworkFactory):
             encoder_level_shapes = []
 
             # TODO: Check where to use batch norm
-            # TODO: Use mirror padding
 
             # Create encoder, level by level
             for level, feature_count in enumerate(feature_counts[:-1]):
@@ -50,6 +49,7 @@ class UnetFactory(NetworkFactory):
                         f"enc_{level}_{conv_idx}",
                         filter_size=3,
                         stride=1,
+                        padding="REFLECT",
                         do_batchnorm=True,
                         data_format=data_format,
                         weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
@@ -73,6 +73,7 @@ class UnetFactory(NetworkFactory):
                     f"enc_{level}_down",
                     filter_size=3,
                     stride=2,
+                    padding="REFLECT",
                     do_batchnorm=True,
                     data_format=data_format,
                     weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
@@ -86,6 +87,7 @@ class UnetFactory(NetworkFactory):
                 f"middle_in",
                 filter_size=3,
                 stride=1,
+                padding="REFLECT",
                 do_batchnorm=True,
                 data_format=data_format,
                 weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
@@ -97,6 +99,7 @@ class UnetFactory(NetworkFactory):
                 f"middle_out",
                 filter_size=3,
                 stride=1,
+                padding="REFLECT",
                 do_batchnorm=True,
                 data_format=data_format,
                 weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
@@ -130,6 +133,7 @@ class UnetFactory(NetworkFactory):
                         f"dec_{level}_{conv_idx}",
                         filter_size=3,
                         stride=1,
+                        padding="REFLECT",
                         do_batchnorm=True,
                         data_format=data_format,
                         weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
@@ -142,7 +146,7 @@ class UnetFactory(NetworkFactory):
                 name=f"out",
                 filter_size=1,
                 stride=1,
-                do_batchnorm=False,  # TODO: Use batch norm here or not?
+                do_batchnorm=False,
                 do_activation=False,
                 data_format=data_format,
                 weight_initializer=tf.uniform_unit_scaling_initializer(1.15)
