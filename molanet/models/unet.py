@@ -1,8 +1,11 @@
+import logging
 import math
 from typing import Union, List
 
 from molanet.base import NetworkFactory, ObjectiveFactory
 from molanet.operations import *
+
+_log = logging.getLogger(__name__)
 
 
 class UnetFactory(NetworkFactory):
@@ -43,8 +46,8 @@ class UnetFactory(NetworkFactory):
 
             # Create encoder, level by level
             for level, feature_count in enumerate(feature_counts[:-1]):
-                print("Level:", level, "; Features:", feature_count)
-                print("Incoming:", current_layer.get_shape())
+                _log.debug(f"Level: {level}; Features: {feature_count}")
+                _log.debug(f"Incoming: {current_layer.get_shape()}")
 
                 # Convolve n times and keep size
                 for conv_idx in range(self._convolutions_per_level):
@@ -79,7 +82,7 @@ class UnetFactory(NetworkFactory):
                     data_format=data_format)
 
             # Perform middle convolution
-            print("Before middle:", current_layer.get_shape())
+            _log.debug(f"Before middle: {current_layer.get_shape()}")
             current_layer, _, _ = conv2d(
                 current_layer,
                 feature_counts[-1],
@@ -88,7 +91,7 @@ class UnetFactory(NetworkFactory):
                 stride=1,
                 do_batchnorm=True,
                 data_format=data_format)
-            print("Middle:", current_layer.get_shape())
+            _log.debug(f"Middle: {current_layer.get_shape()}")
             current_layer, _, _ = conv2d(
                 current_layer,
                 feature_counts[-1],
@@ -97,14 +100,11 @@ class UnetFactory(NetworkFactory):
                 stride=1,
                 do_batchnorm=True,
                 data_format=data_format)
-            print("After middle:", current_layer.get_shape())
+            _log.debug(f"After middle: {current_layer.get_shape()}")
 
             # Now create decoder level by level
             for level, feature_count in reversed(list(enumerate(feature_counts[:-1]))):
-                print("Level:", level, "; Features:", feature_count)
-
-                # TODO: Dropout
-                # TODO: When to ignore batch norm
+                _log.debug(f"Level: {level}; Features: {feature_count}")
 
                 # Upsample and concatenate
                 current_layer, _, _ = conv2d_transpose(
@@ -117,7 +117,7 @@ class UnetFactory(NetworkFactory):
                     do_batchnorm=True,
                     concat_activations=encoder_level_layers[level],
                     data_format=data_format)
-                print("Incoming:", current_layer.get_shape())
+                _log.debug(f"Incoming: {current_layer.get_shape()}")
 
                 # Convolve n times and keep size
                 for conv_idx in range(self._convolutions_per_level):

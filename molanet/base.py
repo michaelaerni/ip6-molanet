@@ -1,4 +1,5 @@
 import csv
+import logging
 import ntpath
 import os
 import shutil
@@ -10,6 +11,8 @@ from PIL import Image
 
 from molanet.input import InputPipeline, ColorConverter
 from molanet.operations import use_cpu, select_device, jaccard_index, tanh_to_sigmoid
+
+_log = logging.getLogger(__name__)
 
 
 class NetworkFactory(object):
@@ -214,6 +217,7 @@ class NetworkTrainer(object):
             learning_rate: float,
             beta1: float = 0.9,
             beta2: float = 0.999):
+
         self._training_options = training_options
         self._restored_iteration = None
 
@@ -347,11 +351,9 @@ class NetworkTrainer(object):
         if self._sess is None:
             raise RuntimeError("A running session is required to start training")
 
-        # TODO: Remove prints everywhere
-
         # Start input enqueue threads.
         coord = tf.train.Coordinator()
-        print("Starting queue runners...")
+        _log.info("Starting queue runners...")
         threads = tf.train.start_queue_runners(sess=self._sess, coord=coord)
 
         save_model_path = os.path.join(self._training_options.summary_directory, "model.ckpt")
@@ -370,7 +372,7 @@ class NetworkTrainer(object):
 
         iteration = self._sess.run(self._global_step)
 
-        print("Starting training")
+        _log.info("Starting training")
 
         try:
             while not coord.should_stop():
@@ -379,11 +381,11 @@ class NetworkTrainer(object):
 
                 if current_iteration % self._training_options.save_model_interval == 0:
                     self._train_saver.save(self._sess, save_model_path, global_step=self._global_step)
-                    print(f"Saved model from iteration {iteration}")
+                    _log.info(f"Saved model from iteration {iteration}")
 
                 # Run CV validation
                 if current_iteration % self._training_options.cv_summary_interval == 0:
-                    print("Evaluating CV set...")
+                    _log.info("Evaluating CV set...")
 
                     # TODO: Make configurable?
                     IMAGE_OUTPUT_COUNT = 5
@@ -438,7 +440,7 @@ class NetworkTrainer(object):
 
                     self._train_summary_writer.add_summary(current_summary, iteration)
 
-                    print(f"Iteration {iteration} done")
+                    _log.info(f"Iteration {iteration} done")
                 else:
                     self._sess.run(self._op_generator)
 
@@ -451,14 +453,14 @@ class NetworkTrainer(object):
         finally:
             coord.request_stop()
 
-            print("Waiting for threads to finish...")
+            _log.info("Waiting for threads to finish...")
             coord.join(threads)
 
             # Close writers AFTER threads stopped to make sure summaries are written
             self._train_summary_writer.close()
             self._cv_summary_writer.close()
 
-        print("Training finished")
+        _log.info("Training finished")
 
     def restore(self, iteration):
         if self._sess is None:
@@ -466,7 +468,7 @@ class NetworkTrainer(object):
 
         self._train_saver.restore(self._sess, os.path.join(self._training_options.summary_directory, f"model.ckpt-{iteration}"))
         self._restored_iteration = self._sess.run(self._global_step)
-        print(f"Iteration {self._restored_iteration} restored")
+        _log.info(f"Iteration {self._restored_iteration} restored")
 
 
 class NetworkEvaluator(object):
@@ -529,7 +531,7 @@ class NetworkEvaluator(object):
     def evaluate(self):
         # Start input enqueue threads.
         coord = tf.train.Coordinator()
-        print("Starting queue runners...")
+        _log.info("Starting queue runners...")
         threads = tf.train.start_queue_runners(sess=self._sess, coord=coord)
 
         # Prepare output directory
@@ -538,7 +540,7 @@ class NetworkEvaluator(object):
         os.makedirs(self._output_directory)
         os.makedirs(self._image_directory)
 
-        print("Starting evaluation")
+        _log.info("Starting evaluation")
 
         sample_ids = []
         evaluation_numbers = np.zeros((self._pipeline.sample_count, 6))
@@ -578,7 +580,7 @@ class NetworkEvaluator(object):
                     Image.fromarray(output_image, "RGB").save(
                         os.path.join(self._image_directory, f"{sample_id}.png"))
 
-                    print(f"[{idx + 1}] Evaluated {sample_id}")
+                    _log.info(f"[{idx + 1}] Evaluated {sample_id}")
 
                 coord.request_stop()
 
@@ -587,7 +589,7 @@ class NetworkEvaluator(object):
         finally:
             coord.request_stop()
 
-            print("Waiting for threads to finish...")
+            _log.info("Waiting for threads to finish...")
             coord.join(threads)
 
         with open(self._output_file, "w", newline="") as f:
@@ -619,10 +621,10 @@ class NetworkEvaluator(object):
         # Generate overall summary
         total_accuracy, total_precision, total_recall, total_f1_score, total_specificity, total_jaccard_similarity = \
             np.mean(evaluation_numbers, axis=0)
-        print("Evaluation done")
-        print("Average accuracy:", total_accuracy)
-        print("Average precision:", total_precision)
-        print("Average recall:", total_recall)
-        print("Average f1 score:", total_f1_score)
-        print("Average specificity:", total_specificity)
-        print("Average jaccard similarity:", total_jaccard_similarity)
+        _log.info("Evaluation done")
+        _log.info(f"Average accuracy: {total_accuracy}")
+        _log.info(f"Average precision: {total_precision}")
+        _log.info(f"Average recall: {total_recall}")
+        _log.info(f"Average f1 score: {total_f1_score}")
+        _log.info(f"Average specificity: {total_specificity}")
+        _log.info(f"Average jaccard similarity: {total_jaccard_similarity}")

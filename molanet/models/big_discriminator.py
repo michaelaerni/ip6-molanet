@@ -1,8 +1,11 @@
+import logging
 import math
 from typing import Union
 
 from molanet.base import NetworkFactory
 from molanet.operations import *
+
+_log = logging.getLogger(__name__)
 
 
 class BigDiscPix2Pix(NetworkFactory):
@@ -169,7 +172,7 @@ class BigDiscPix2Pix(NetworkFactory):
             # mask pipeline
             if self._multiply_mask:
                 y = tf.multiply(y, x)
-                print("y*x shape", y.get_shape())
+                _log.debug(f"y*x shape: {y.get_shape()}")
 
             mask, _, _ = conv2d(y, 64, "disc_y_conv", 5, 1, do_batchnorm=False,
                                 do_activation=False if self._use_layer_norm else True,
@@ -210,7 +213,6 @@ class BigDiscPix2Pix(NetworkFactory):
                                                   data_format=data_format,
                                                   name=f"xy{k}",
                                                   layer_norm=self._use_layer_norm)
-                # print(f"shape xy{k}", xyK.get_shape())
                 layer_size = layer_size // 2
                 depth_map_count = depth_map_count * 2 if depth_map_count < self._max_discriminator_features \
                     else self._max_discriminator_features

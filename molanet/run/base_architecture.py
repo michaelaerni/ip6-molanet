@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import shutil
 from datetime import datetime
@@ -38,6 +39,9 @@ if __name__ == "__main__":
     parser = create_arg_parser()
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s [%(name)s]: %(message)s")
+    log = logging.getLogger(__name__)
+
     if args.logsubdir and args.restore is None:
         now = datetime.now()
         subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}_base_architecture"
@@ -73,17 +77,17 @@ if __name__ == "__main__":
                                      data_format=data_format,
                                      batch_size=1, batch_thread_count=1, name="cv")
 
-    print("Input pipelines created")
-    print(f"Training set size: {training_pipeline.sample_count}")
-    print(f"CV set size: {cv_pipeline.sample_count}")
+    log.info("Input pipelines created")
+    log.info(f"Training set size: {training_pipeline.sample_count}")
+    log.info(f"CV set size: {cv_pipeline.sample_count}")
 
     if args.debug_placement:
-        print("Enabled device placement logging")
+        log.info("Enabled device placement logging")
 
     config = tf.ConfigProto(log_device_placement=args.debug_placement)
     if args.xla:
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
-        print("Enabled JIT XLA compilation")
+        log.info("Enabled JIT XLA compilation")
 
     network_factory = Pix2PixFactory(
         spatial_extent=512,
@@ -111,14 +115,16 @@ if __name__ == "__main__":
             use_gpu=not args.no_gpu,
             data_format=data_format),
         learning_rate=0.0001, beta1=0.5, beta2=0.9)
-    print("Trainer created")
+    log.info("Trainer created")
 
     with trainer:
-        print("Session started")
+        log.info("Session started")
 
         if args.restore is not None:
             trainer.restore(args.restore)
-            print(f"Iteration {args.restore} restored")
+            log.info(f"Iteration {args.restore} restored")
 
-        print("Starting training")
+        log.info("Starting training")
         trainer.train()
+
+    log.info("Shutting down...")
