@@ -33,7 +33,7 @@ class UnetFactory(NetworkFactory):
             encoder_level_layers = []
             encoder_level_shapes = []
 
-            # TODO: Check where to use batch norm
+            # TODO: Document that we are using batch norm on all layers and do not convolve until 1x1 anymore
 
             # Create encoder, level by level
             for level, feature_count in enumerate(feature_counts[:-1]):
