@@ -1,5 +1,4 @@
-import math
-from typing import Union, List
+from typing import Union
 
 from molanet.base import NetworkFactory, ObjectiveFactory
 from molanet.operations import *
@@ -62,7 +61,6 @@ class Pix2PixFactory(NetworkFactory):
             layer_count = layer_index
 
             # Decoder
-            # TODO: Initial image is not concatenated
             for idx in range(layer_count):
                 use_batchnorm = self._use_batchnorm and idx < layer_count - 1
                 keep_probability = self._dropout_keep_probability \

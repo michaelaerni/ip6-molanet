@@ -17,12 +17,8 @@ class BigDiscPix2Pix(NetworkFactory):
             max_discriminator_features: int = 512,
             dropout_keep_probability: float = 0.5,
             dropout_layer_count: int = 2,
-            use_batchnorm: bool = True,
-            use_layernorm: bool = False,
-            weight_initializer=tf.truncated_normal_initializer(stddev=0.02),
-            multiply_mask: bool = False):
-
-        # TODO: weight_initializer is currently ignored
+            use_batchnorm: bool = True
+    ):
 
         if math.log2(spatial_extent) != int(math.log2(spatial_extent)):
             raise ValueError("spatial_extent must be a power of 2")
@@ -35,9 +31,6 @@ class BigDiscPix2Pix(NetworkFactory):
         self._dropout_layer_count = dropout_layer_count
         self._dropout_keep_probability = tf.constant(dropout_keep_probability)
         self._use_batchnorm = use_batchnorm
-        self._use_layer_norm = use_layernorm
-        self._weight_initializer = weight_initializer
-        self._multiply_mask = multiply_mask
 
     def create_generator(self, x: tf.Tensor, reuse: bool = False, use_gpu: bool = True,
                          data_format: str = "NHWC") -> tf.Tensor:
@@ -68,7 +61,6 @@ class BigDiscPix2Pix(NetworkFactory):
             layer_count = layer_index
 
             # Decoder
-            # TODO: Initial image is not concatenated
             for idx in range(layer_count):
                 use_batchnorm = self._use_batchnorm and idx < layer_count - 1
                 keep_probability = self._dropout_keep_probability \
@@ -95,52 +87,6 @@ class BigDiscPix2Pix(NetworkFactory):
 
             return tf.tanh(input_tensor, name="dec_activation")
 
-    @classmethod
-    def _leaky_relu_func(cls, features):
-        return tf.maximum(0.2 * features, features)
-
-    @classmethod
-    def _layer_norm(cls, features, do_activation: bool = False):
-        if do_activation:
-            layer_normed = tf.contrib.layers.layer_norm(features)
-            return leaky_relu(layer_normed, 0.2)
-        else:
-            return tf.contrib.layers.layer_norm(features)
-
-    @classmethod
-    def _conv_act_convstride2(cls, features: tf.Tensor, depth_maps: int, filter_size: int, data_format: str,
-                              name: str,
-                              dropout_keep_prob: float = None,
-                              layer_norm: bool = False):
-        conv, _, _ = conv2d(features, depth_maps, f"{name}",
-                            filter_size,
-                            stride=1,
-                            do_batchnorm=False,
-                            do_activation=False if layer_norm else True,
-                            data_format=data_format,
-                            padding="REFLECT",
-                            weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
-
-        if dropout_keep_prob is not None:
-            conv = tf.nn.dropout(conv, dropout_keep_prob, name=f"{name}_dropout")
-
-        if layer_norm:
-            # TODO reuse?
-            conv = cls._layer_norm(conv, do_activation=True)
-
-        strided, _, _ = conv2d(conv, depth_maps, f"{name}_strided",
-                               filter_size,
-                               stride=2,
-                               do_batchnorm=False,
-                               do_activation=False if layer_norm else True,
-                               data_format=data_format)
-
-        if layer_norm:
-            # TODO reuse?
-            strided = cls._layer_norm(strided, do_activation=True)
-
-        return strided
-
     def create_discriminator(
             self,
             x: tf.Tensor,
@@ -153,78 +99,109 @@ class BigDiscPix2Pix(NetworkFactory):
         with tf.variable_scope("discriminator", reuse=reuse), tf.device(select_device(use_gpu)):
             concat_axis = 3 if data_format == "NHWC" else 1
 
-            """
-            heavily inspired by facebook AI research 2016 paper
-            'Semantic Segmentation using Adversarial Networks'
+            original_y = y
 
-            Stanford background dataset
-            """
+            # Multiply mask input
+            # Concatenate y as some parts of x could be zero, thus bad masks in black input areas would be ignored
+            multiplied = tf.multiply(y, x)
+            multiplied = tf.concat([multiplied, y], concat_axis)
+            y = multiplied
 
-            # mask pipeline
-            if self._multiply_mask:
-                multiplied = tf.multiply(y, x)
-                multiplied = tf.concat([multiplied, y], concat_axis)
-                y = multiplied
+            # Convolve mask branch once
+            mask, _, _ = conv2d(
+                y,
+                feature_count=64,
+                name="disc_y_conv",
+                filter_size=5,
+                stride=1,
+                do_batchnorm=False,
+                do_activation=True,
+                data_format=data_format,
+                padding="REFLECT",
+                weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
 
-                _log.debug(f"y*x shape: {y.get_shape()}")
+            # Convolve original image branch twice
+            x1, _, _ = conv2d(
+                x,
+                feature_count=16,
+                name="x1",
+                filter_size=5,
+                stride=1,
+                do_batchnorm=False,
+                do_activation=True,
+                data_format=data_format,
+                padding="REFLECT",
+                weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
+            x2, _, _ = conv2d(
+                x1,
+                feature_count=64,
+                name="x2",
+                filter_size=5,
+                stride=1,
+                do_batchnorm=False,
+                do_activation=True,
+                data_format=data_format,
+                padding="REFLECT",
+                weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
 
-            mask, _, _ = conv2d(y, 64, "disc_y_conv", 5, 1, do_batchnorm=False,
-                                do_activation=False if self._use_layer_norm else True,
-                                data_format=data_format,
-                                padding="REFLECT",
-                                weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
-            if self._use_layer_norm:
-                mask = self._layer_norm(mask, do_activation=True)
+            # Concat input branches
+            xy = tf.concat([x2, mask], axis=concat_axis, name="concat_input_branches")
 
-            # image pipeline
-            x1, _, _ = conv2d(x, 16, "x1", 5, stride=1, do_batchnorm=False,
-                              do_activation=False if self._use_layer_norm else True,
-                              data_format=data_format,
-                              padding="REFLECT",
-                              weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
-            if self._use_layer_norm:
-                x1 = self._layer_norm(x1, do_activation=True)
-
-            x2, _, _ = conv2d(x1, 64, "x2", 5, stride=1, do_batchnorm=False,
-                              do_activation=False if self._use_layer_norm else True,
-                              data_format=data_format,
-                              padding="REFLECT",
-                              weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
-            if self._use_layer_norm:
-                x2 = self._layer_norm(x2, do_activation=True)
-
-            # concat
-            xy = tf.concat([x2, mask], axis=concat_axis)
-
-            # downsample to 1x1
-            layer_size = self._spatial_extent
-            k = 0
+            # Downsample to 1x1
             xy_k = xy
             depth_map_count = self._min_discriminator_features
-            while k < 9:  # 2^9 = 512
-                k += 1
-                # use dropout on conv layers
-                # increasing probability to drop
-                # 0.1 0.2 0.3
+            for k in range(9):  # 2^9 = 512
 
-                xy_k = self._conv_act_convstride2(xy_k,
-                                                  depth_maps=depth_map_count,
-                                                  filter_size=3,
-                                                  data_format=data_format,
-                                                  name=f"xy{k}",
-                                                  layer_norm=self._use_layer_norm)
-                layer_size = layer_size // 2
-                depth_map_count = depth_map_count * 2 if depth_map_count < self._max_discriminator_features \
-                    else self._max_discriminator_features
+                # Produce bigger feature map for second to last level
                 if k == 8:
-                    depth_map_count *= 2  # more weights on last down-sampling layer
+                    depth_map_count *= 2
 
-            output, _, _ = conv2d(xy_k, 1, "final", 1, 1, do_batchnorm=False, do_activation=False,
-                                  data_format=data_format,
-                                  padding="VALID",
-                                  weight_initializer=tf.uniform_unit_scaling_initializer(1.15))
+                _log.debug(f"Level {k} input: Shape={xy_k.get_shape()}, Features={depth_map_count}")
+
+                # Convolve
+                conv, _, _ = conv2d(
+                    xy_k,
+                    feature_count=depth_map_count,
+                    name=f"xy_{k}",
+                    filter_size=3,
+                    stride=1,
+                    do_batchnorm=False,
+                    do_activation=True,
+                    data_format=data_format,
+                    padding="REFLECT",
+                    weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
+                )
+
+                # Downsample
+                xy_k, _, _ = conv2d(
+                    conv,
+                    feature_count=depth_map_count,
+                    name=f"xy{k}_strided",
+                    filter_size=3,
+                    stride=2,
+                    do_batchnorm=False,
+                    do_activation=True,
+                    data_format=data_format,
+                    weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
+                )
+
+                _log.debug(f"Level {k} output: Shape={xy_k.get_shape()}")
+
+                depth_map_count = min(self._max_discriminator_features, depth_map_count * 2)
+
+            output, _, _ = conv2d(
+                xy_k,
+                feature_count=1,
+                name="output",
+                filter_size=1,
+                stride=1,
+                do_batchnorm=False,
+                do_activation=False,
+                data_format=data_format,
+                padding="VALID",
+                weight_initializer=tf.uniform_unit_scaling_initializer(1.0))
 
             if return_input_tensor:
-                return output, xy
+                return output, tf.concat([x, original_y], axis=concat_axis)
             else:
                 return output

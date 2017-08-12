@@ -14,7 +14,7 @@ from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser("Molanet PoC script")
+    parser = argparse.ArgumentParser("Enhanced discriminator training script")
 
     parser.add_argument("--sampledir", type=str,
                         help="Root sample directory, containing set directories and meta files")
@@ -45,7 +45,7 @@ if __name__ == "__main__":
 
     if args.logsubdir and args.restore is None:
         now = datetime.now()
-        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}_bigger_discriminator"
+        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}_enhanced_discriminator"
         logdir = os.path.join(args.logdir, subdirname)
     else:
         logdir = args.logdir
@@ -93,15 +93,12 @@ if __name__ == "__main__":
     network_factory = BigDiscPix2Pix(
         spatial_extent=512,
         min_generator_features=64,
-        max_generator_features=512,
-        min_discriminator_features=64,
+        max_generator_features=1024,
+        min_discriminator_features=32,
         max_discriminator_features=512,
         dropout_keep_probability=0.5,
         dropout_layer_count=2,
-        use_batchnorm=True,
-        use_layernorm=args.use_layer_norm,
-        weight_initializer=tf.truncated_normal_initializer(stddev=0.02),
-        multiply_mask=False
+        use_batchnorm=True
     )
 
     trainer = NetworkTrainer(
