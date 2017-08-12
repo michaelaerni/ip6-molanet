@@ -35,7 +35,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-iterations", type=int,
                         help="Maximum number of iterations before training stops")
     parser.add_argument("--xla", action="store_true",
-                        help="enable JIT compilation to XLA at the session level (gpu only)")
+                        help="Enable XLA JIT compilation (GPU only)")
     return parser
 
 
