@@ -60,8 +60,7 @@ class WassersteinJaccardFactory(ObjectiveFactory):
                 tf.summary.scalar("discriminator_loss_generated", loss_generated),
                 tf.summary.scalar("discriminator_gradient_penalty", gradient_penalty),
                 tf.summary.scalar("discriminator_gradient_norm", gradient_norm),
-                tf.summary.scalar("discriminator_loss", loss),
-                tf.summary.scalar("generator_jaccard_loss", tf.reduce_mean(generated_jaccard_loss))
+                tf.summary.scalar("discriminator_loss", loss)
             ]
 
             return loss, summary_operations

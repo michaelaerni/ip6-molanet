@@ -9,7 +9,7 @@ import tensorflow as tf
 from PIL import Image
 
 from molanet.input import InputPipeline, ColorConverter
-from molanet.operations import use_cpu, select_device
+from molanet.operations import use_cpu, select_device, jaccard_index, tanh_to_sigmoid
 
 
 class NetworkFactory(object):
@@ -131,9 +131,10 @@ class ObjectiveFactory(object):
 
 
 def _create_summaries(
-        generator: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-    generated_classes = tf.round((generator + 1.0) / 2.0)
-    real_classes = (y + 1.0) / 2.0
+        generator: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+    generator_classes_raw = tanh_to_sigmoid(generator)
+    generated_classes = tf.round(generator_classes_raw)
+    real_classes = tanh_to_sigmoid(y)
     generated_positives = tf.reduce_sum(generated_classes)
     real_positives = tf.reduce_sum(real_classes)
     real_negatives = tf.reduce_sum(1.0 - real_classes)
@@ -156,7 +157,12 @@ def _create_summaries(
                        lambda: 0.0)
     specificity = tf.cond(real_negatives > 0, lambda: true_negatives / real_negatives, lambda: 1.0)
 
-    return accuracy, precision, recall, f1_score, specificity
+    jaccard_similarity = tf.reduce_mean(jaccard_index(
+        values=generator_classes_raw,
+        labels=real_classes
+    ))
+
+    return accuracy, precision, recall, f1_score, specificity, jaccard_similarity
 
 
 def _create_concatenated_images(
@@ -260,13 +266,14 @@ class NetworkTrainer(object):
                 self._step_op = tf.assign_add(self._global_step, 1)
 
             # Create summary operation
-            accuracy, precision, recall, f1_score, specificity = _create_summaries(self._generator, self._train_y)
+            accuracy, precision, recall, f1_score, specificity, jaccard_similarity = _create_summaries(self._generator, self._train_y)
             summary_operations = [
                 tf.summary.scalar("accuracy", accuracy),
                 tf.summary.scalar("precision", precision),
                 tf.summary.scalar("recall", recall),
                 tf.summary.scalar("f1_score", f1_score),
-                tf.summary.scalar("specificity", specificity)
+                tf.summary.scalar("specificity", specificity),
+                tf.summary.scalar("jaccard_similarity", jaccard_similarity)
             ]
 
             # TODO: Input pipeline summary is lost
@@ -301,7 +308,7 @@ class NetworkTrainer(object):
                 data_format=self._training_options.data_format)
 
             # Create other summary options
-            accuracy, precision, recall, f1_score, specificity = _create_summaries(generator, self._cv_y)
+            accuracy, precision, recall, f1_score, specificity, jaccard_similarity = _create_summaries(generator, self._cv_y)
 
             # Create summary operation
             summary_operations = [
@@ -309,7 +316,8 @@ class NetworkTrainer(object):
                 tf.summary.scalar("precision", precision),
                 tf.summary.scalar("recall", recall),
                 tf.summary.scalar("f1_score", f1_score),
-                tf.summary.scalar("specificity", specificity)
+                tf.summary.scalar("specificity", specificity),
+                tf.summary.scalar("jaccard_similarity", jaccard_similarity)
             ]
 
             with use_cpu():
@@ -491,8 +499,8 @@ class NetworkEvaluator(object):
 
         with use_cpu():
             # Create basic summary
-            self._accuracy, self._precision, self._recall, self._f1_score, self._specificity = \
-                _create_summaries(generator, self._y)
+            self._accuracy, self._precision, self._recall, self._f1_score, self._specificity, self._jaccard_similarity \
+                = _create_summaries(generator, self._y)
 
             # Concatenated images
             self._concatenated_images = _create_concatenated_images(
@@ -533,7 +541,7 @@ class NetworkEvaluator(object):
         print("Starting evaluation")
 
         sample_ids = []
-        evaluation_numbers = np.zeros((self._pipeline.sample_count, 5))
+        evaluation_numbers = np.zeros((self._pipeline.sample_count, 6))
 
         ops = [
             self._accuracy,
@@ -541,6 +549,7 @@ class NetworkEvaluator(object):
             self._recall,
             self._f1_score,
             self._specificity,
+            self._jaccard_similarity,
             self._file_names,
             self._concatenated_images
         ]
@@ -548,7 +557,8 @@ class NetworkEvaluator(object):
         try:
             while not coord.should_stop():
                 for idx in range(self._pipeline.sample_count):
-                    accuracy, precision, recall, f1_score, specificity, work_item, image = self._sess.run(ops)
+                    accuracy, precision, recall, f1_score, specificity, jaccard_similarity, work_item, image \
+                        = self._sess.run(ops)
 
                     # Convert work item to path, remove offset counter at the end and file extension
                     file_path, _ = os.path.splitext(work_item[0].decode("UTF-8").split(":")[-2])
@@ -561,6 +571,7 @@ class NetworkEvaluator(object):
                     evaluation_numbers[idx, 2] = recall
                     evaluation_numbers[idx, 3] = f1_score
                     evaluation_numbers[idx, 4] = specificity
+                    evaluation_numbers[idx, 5] = jaccard_similarity
 
                     # Save image
                     output_image = np.reshape(image, (512, 512 * 4, 3))  # TODO: Remove fixed size
@@ -581,7 +592,16 @@ class NetworkEvaluator(object):
 
         with open(self._output_file, "w", newline="") as f:
             writer = csv.writer(f, delimiter=";", quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(["uuid", "segmentation_id", "accuarcy", "precision", "recall", "f1_score", "specificity"])
+            writer.writerow([
+                "uuid",
+                "segmentation_id",
+                "accuarcy",
+                "precision",
+                "recall",
+                "f1_score",
+                "specificity",
+                "jaccard_similarity"
+            ])
 
             for idx, sample_id in enumerate(sample_ids):
                 uuid, segmentation_id = sample_id.split("_")
@@ -592,11 +612,12 @@ class NetworkEvaluator(object):
                     evaluation_numbers[idx, 1],
                     evaluation_numbers[idx, 2],
                     evaluation_numbers[idx, 3],
-                    evaluation_numbers[idx, 4]
+                    evaluation_numbers[idx, 4],
+                    evaluation_numbers[idx, 5]
                 ])
 
         # Generate overall summary
-        total_accuracy, total_precision, total_recall, total_f1_score, total_specificity = \
+        total_accuracy, total_precision, total_recall, total_f1_score, total_specificity, total_jaccard_similarity = \
             np.mean(evaluation_numbers, axis=0)
         print("Evaluation done")
         print("Average accuracy:", total_accuracy)
@@ -604,3 +625,4 @@ class NetworkEvaluator(object):
         print("Average recall:", total_recall)
         print("Average f1 score:", total_f1_score)
         print("Average specificity:", total_specificity)
+        print("Average jaccard similarity:", total_jaccard_similarity)
