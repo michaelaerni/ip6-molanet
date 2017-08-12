@@ -119,7 +119,7 @@ class BigDiscPix2Pix(NetworkFactory):
             # Convolve mask branch once
             mask, _, _ = conv2d(
                 y,
-                feature_count=64,
+                feature_count=32,
                 name="disc_y_conv",
                 filter_size=5,
                 stride=1,
@@ -143,7 +143,7 @@ class BigDiscPix2Pix(NetworkFactory):
                 weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
             x2, _, _ = conv2d(
                 x1,
-                feature_count=64,
+                feature_count=32,
                 name="x2",
                 filter_size=5,
                 stride=1,

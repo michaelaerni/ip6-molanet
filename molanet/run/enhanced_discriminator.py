@@ -94,7 +94,7 @@ if __name__ == "__main__":
         spatial_extent=512,
         min_generator_features=64,
         max_generator_features=1024,
-        min_discriminator_features=32,
+        min_discriminator_features=64,
         max_discriminator_features=512,
         dropout_keep_probability=0.5,
         dropout_layer_count=2,
