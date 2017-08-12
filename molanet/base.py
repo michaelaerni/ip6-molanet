@@ -130,11 +130,13 @@ class ObjectiveFactory(object):
         raise NotImplementedError("This method should be overridden by child classes")
 
 
-def _create_summaries(generator: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+def _create_summaries(
+        generator: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     generated_classes = tf.round((generator + 1.0) / 2.0)
     real_classes = (y + 1.0) / 2.0
     generated_positives = tf.reduce_sum(generated_classes)
     real_positives = tf.reduce_sum(real_classes)
+    real_negatives = tf.reduce_sum(1.0 - real_classes)
 
     accuracy = tf.reduce_mean(tf.cast(tf.equal(generated_classes, real_classes), dtype=tf.float32))
     true_positives = tf.reduce_sum(tf.cast(
@@ -142,14 +144,19 @@ def _create_summaries(generator: tf.Tensor, y: tf.Tensor) -> Tuple[tf.Tensor, tf
             tf.equal(real_classes, tf.ones_like(real_classes)),
             tf.equal(generated_classes, real_classes)),
         dtype=tf.float32))
-    # TODO: Zero handling in precision, recall and f1 are a bit wonky, discuss and fix this
+    true_negatives = tf.reduce_sum(tf.cast(
+        tf.logical_and(
+            tf.equal(real_classes, tf.zeros_like(real_classes)),
+            tf.equal(generated_classes, real_classes)),
+        dtype=tf.float32))
     precision = tf.cond(generated_positives > 0, lambda: true_positives / generated_positives, lambda: 1.0)
     recall = tf.cond(real_positives > 0, lambda: true_positives / real_positives, lambda: 1.0)
     f1_score = tf.cond(tf.logical_and(precision > 0, recall > 0),
                        lambda: 2.0 * precision * recall / (precision + recall),
                        lambda: 0.0)
+    specificity = tf.cond(real_negatives > 0, lambda: true_negatives / real_negatives, lambda: 1.0)
 
-    return accuracy, precision, recall, f1_score
+    return accuracy, precision, recall, f1_score, specificity
 
 
 def _create_concatenated_images(
@@ -253,12 +260,13 @@ class NetworkTrainer(object):
                 self._step_op = tf.assign_add(self._global_step, 1)
 
             # Create summary operation
-            accuracy, precision, recall, f1_score = _create_summaries(self._generator, self._train_y)
+            accuracy, precision, recall, f1_score, specificity = _create_summaries(self._generator, self._train_y)
             summary_operations = [
                 tf.summary.scalar("accuracy", accuracy),
                 tf.summary.scalar("precision", precision),
                 tf.summary.scalar("recall", recall),
-                tf.summary.scalar("f1_score", f1_score)
+                tf.summary.scalar("f1_score", f1_score),
+                tf.summary.scalar("specificity", specificity)
             ]
 
             # TODO: Input pipeline summary is lost
@@ -293,14 +301,15 @@ class NetworkTrainer(object):
                 data_format=self._training_options.data_format)
 
             # Create other summary options
-            accuracy, precision, recall, f1_score = _create_summaries(generator, self._cv_y)
+            accuracy, precision, recall, f1_score, specificity = _create_summaries(generator, self._cv_y)
 
             # Create summary operation
             summary_operations = [
                 tf.summary.scalar("accuracy", accuracy),
                 tf.summary.scalar("precision", precision),
                 tf.summary.scalar("recall", recall),
-                tf.summary.scalar("f1_score", f1_score)
+                tf.summary.scalar("f1_score", f1_score),
+                tf.summary.scalar("specificity", specificity)
             ]
 
             with use_cpu():
@@ -482,7 +491,8 @@ class NetworkEvaluator(object):
 
         with use_cpu():
             # Create basic summary
-            self._accuracy, self._precision, self._recall, self._f1_score = _create_summaries(generator, self._y)
+            self._accuracy, self._precision, self._recall, self._f1_score, self._specificity = \
+                _create_summaries(generator, self._y)
 
             # Concatenated images
             self._concatenated_images = _create_concatenated_images(
@@ -523,13 +533,14 @@ class NetworkEvaluator(object):
         print("Starting evaluation")
 
         sample_ids = []
-        evaluation_numbers = np.zeros((self._pipeline.sample_count, 4))
+        evaluation_numbers = np.zeros((self._pipeline.sample_count, 5))
 
         ops = [
             self._accuracy,
             self._precision,
             self._recall,
             self._f1_score,
+            self._specificity,
             self._file_names,
             self._concatenated_images
         ]
@@ -537,7 +548,7 @@ class NetworkEvaluator(object):
         try:
             while not coord.should_stop():
                 for idx in range(self._pipeline.sample_count):
-                    accuracy, precision, recall, f1_score, work_item, image = self._sess.run(ops)
+                    accuracy, precision, recall, f1_score, specificity, work_item, image = self._sess.run(ops)
 
                     # Convert work item to path, remove offset counter at the end and file extension
                     file_path, _ = os.path.splitext(work_item[0].decode("UTF-8").split(":")[-2])
@@ -549,6 +560,7 @@ class NetworkEvaluator(object):
                     evaluation_numbers[idx, 1] = precision
                     evaluation_numbers[idx, 2] = recall
                     evaluation_numbers[idx, 3] = f1_score
+                    evaluation_numbers[idx, 4] = specificity
 
                     # Save image
                     output_image = np.reshape(image, (512, 512 * 4, 3))  # TODO: Remove fixed size
@@ -569,7 +581,7 @@ class NetworkEvaluator(object):
 
         with open(self._output_file, "w", newline="") as f:
             writer = csv.writer(f, delimiter=";", quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(["uuid", "segmentation_id", "accuarcy", "precision", "recall", "f1_score"])
+            writer.writerow(["uuid", "segmentation_id", "accuarcy", "precision", "recall", "f1_score", "specificity"])
 
             for idx, sample_id in enumerate(sample_ids):
                 uuid, segmentation_id = sample_id.split("_")
@@ -579,13 +591,16 @@ class NetworkEvaluator(object):
                     evaluation_numbers[idx, 0],
                     evaluation_numbers[idx, 1],
                     evaluation_numbers[idx, 2],
-                    evaluation_numbers[idx, 3]
+                    evaluation_numbers[idx, 3],
+                    evaluation_numbers[idx, 4]
                 ])
 
         # Generate overall summary
-        total_accuracy, total_precision, total_recall, total_f1_score = np.mean(evaluation_numbers, axis=0)
+        total_accuracy, total_precision, total_recall, total_f1_score, total_specificity = \
+            np.mean(evaluation_numbers, axis=0)
         print("Evaluation done")
         print("Average accuracy:", total_accuracy)
         print("Average precision:", total_precision)
         print("Average recall:", total_recall)
         print("Average f1 score:", total_f1_score)
+        print("Average specificity:", total_specificity)
