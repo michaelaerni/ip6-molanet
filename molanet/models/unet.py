@@ -16,12 +16,7 @@ class UnetFactory(NetworkFactory):
             convolutions_per_level: int = 1,
             min_discriminator_features: int = 32,
             max_discriminator_features: int = 512,
-            dropout_keep_probability: float = 0.5,
-            dropout_layer_count: int = 2,
-            use_batchnorm: bool = True,
-            weight_initializer=tf.truncated_normal_initializer(stddev=0.02)):
-
-        # TODO: weight_initializer is currently ignored
+            use_batchnorm: bool = True):
 
         if math.log2(spatial_extent) != int(math.log2(spatial_extent)):
             raise ValueError("spatial_extent must be a power of 2")
@@ -30,10 +25,7 @@ class UnetFactory(NetworkFactory):
         self._convolutions_per_level = convolutions_per_level
         self._min_discriminator_features = min_discriminator_features
         self._max_discriminator_features = max_discriminator_features
-        self._dropout_layer_count = dropout_layer_count
-        self._dropout_keep_probability = tf.constant(dropout_keep_probability)
         self._use_batchnorm = use_batchnorm
-        self._weight_initializer = weight_initializer
 
     def create_generator(self, x: tf.Tensor, reuse: bool = False, use_gpu: bool = True, data_format: str = "NHWC") -> tf.Tensor:
         with tf.variable_scope("generator", reuse=reuse), tf.device(select_device(use_gpu)):
@@ -43,6 +35,7 @@ class UnetFactory(NetworkFactory):
             encoder_level_shapes = []
 
             # TODO: Check where to use batch norm
+            # TODO: Use mirror padding
 
             # Create encoder, level by level
             for level, feature_count in enumerate(feature_counts[:-1]):
@@ -58,7 +51,9 @@ class UnetFactory(NetworkFactory):
                         filter_size=3,
                         stride=1,
                         do_batchnorm=True,
-                        data_format=data_format)
+                        data_format=data_format,
+                        weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
+                    )
 
                 # Store current layer for skip connection
                 encoder_level_layers.append(current_layer)
@@ -79,7 +74,9 @@ class UnetFactory(NetworkFactory):
                     filter_size=3,
                     stride=2,
                     do_batchnorm=True,
-                    data_format=data_format)
+                    data_format=data_format,
+                    weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
+                )
 
             # Perform middle convolution
             _log.debug(f"Before middle: {current_layer.get_shape()}")
@@ -90,7 +87,9 @@ class UnetFactory(NetworkFactory):
                 filter_size=3,
                 stride=1,
                 do_batchnorm=True,
-                data_format=data_format)
+                data_format=data_format,
+                weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
+            )
             _log.debug(f"Middle: {current_layer.get_shape()}")
             current_layer, _, _ = conv2d(
                 current_layer,
@@ -99,7 +98,9 @@ class UnetFactory(NetworkFactory):
                 filter_size=3,
                 stride=1,
                 do_batchnorm=True,
-                data_format=data_format)
+                data_format=data_format,
+                weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
+            )
             _log.debug(f"After middle: {current_layer.get_shape()}")
 
             # Now create decoder level by level
@@ -116,7 +117,9 @@ class UnetFactory(NetworkFactory):
                     stride=2,
                     do_batchnorm=True,
                     concat_activations=encoder_level_layers[level],
-                    data_format=data_format)
+                    data_format=data_format,
+                    weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
+                )
                 _log.debug(f"Incoming: {current_layer.get_shape()}")
 
                 # Convolve n times and keep size
@@ -128,7 +131,9 @@ class UnetFactory(NetworkFactory):
                         filter_size=3,
                         stride=1,
                         do_batchnorm=True,
-                        data_format=data_format)
+                        data_format=data_format,
+                        weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
+                    )
 
             # Perform final convolution
             output_layer, _, _ = conv2d(
@@ -139,7 +144,9 @@ class UnetFactory(NetworkFactory):
                 stride=1,
                 do_batchnorm=False,  # TODO: Use batch norm here or not?
                 do_activation=False,
-                data_format=data_format)
+                data_format=data_format,
+                weight_initializer=tf.uniform_unit_scaling_initializer(1.15)
+            )
 
             return tf.tanh(output_layer, name="dec_activation")
 
@@ -169,7 +176,9 @@ class UnetFactory(NetworkFactory):
                     stride=2,
                     do_batchnorm=False,
                     do_activation=layer_size // 2 > 1,
-                    data_format=data_format)
+                    data_format=data_format,
+                    weight_initializer=tf.uniform_unit_scaling_initializer(1.43)
+                )
                 layer_size = layer_size // 2
                 feature_count = min(self._max_discriminator_features, feature_count * 2) if layer_size // 2 > 1 else 1
                 layer_index += 1
@@ -178,63 +187,3 @@ class UnetFactory(NetworkFactory):
                 return input_tensor, concatenated_input
             else:
                 return input_tensor
-
-
-class Pix2PixLossFactory(ObjectiveFactory):
-
-    def __init__(self, l1_lambda: float):
-        self._l1_lambda = tf.constant(l1_lambda, dtype=tf.float32)
-
-    def create_discriminator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
-                                  generator_discriminator: tf.Tensor, real_discriminator: tf.Tensor,
-                                  apply_summary: bool = True, use_gpu: bool = True,
-                                  data_format: str = "NHWC") -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
-        with tf.device(select_device(use_gpu)):
-            loss_real = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(
-                    logits=real_discriminator,
-                    labels=tf.ones_like(generator_discriminator))
-            )
-            loss_generated = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(
-                    logits=generator_discriminator,
-                    labels=tf.zeros_like(generator_discriminator))
-            )
-
-        loss = loss_real + loss_generated
-
-        if apply_summary:
-            summary_ops = [
-                tf.summary.scalar("discriminator_loss", loss),
-                tf.summary.scalar("discriminator_loss_real", loss_real),
-                tf.summary.scalar("discriminator_loss_generated", loss_generated)
-            ]
-
-            return loss, summary_ops
-        else:
-            return loss
-
-    def create_generator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,
-                              generator_discriminator: tf.Tensor,
-                              apply_summary: bool = True, use_gpu: bool = True,
-                              data_format: str = "NHWC") -> Union[tf.Tensor, Tuple[tf.Tensor, List[tf.Tensor]]]:
-        with tf.device(select_device(use_gpu)):
-            loss_discriminator = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(
-                    logits=generator_discriminator,
-                    labels=tf.ones_like(generator_discriminator))
-            )
-            l1_loss = tf.reduce_mean(tf.abs(tf.subtract(y, generator)))
-
-        loss = loss_discriminator + self._l1_lambda * l1_loss
-
-        if apply_summary:
-            summary_ops = [
-                tf.summary.scalar("generator_loss", loss),
-                tf.summary.scalar("generator_loss_discriminator", loss_discriminator),
-                tf.summary.scalar("generator_loss_l1_unscaled", l1_loss)
-            ]
-
-            return loss, summary_ops
-        else:
-            return loss
