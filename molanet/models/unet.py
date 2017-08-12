@@ -148,6 +148,7 @@ class UnetFactory(NetworkFactory):
                 stride=1,
                 do_batchnorm=False,
                 do_activation=False,
+                padding="VALID",  # VALID as 1x1 convolutions always result in same size
                 data_format=data_format,
                 weight_initializer=tf.uniform_unit_scaling_initializer(1.15)
             )
