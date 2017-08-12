@@ -15,8 +15,8 @@ class UnetFactory(NetworkFactory):
             spatial_extent: int,
             convolutions_per_level: int = 1,
             min_discriminator_features: int = 32,
-            max_discriminator_features: int = 512,
-            use_batchnorm: bool = True):
+            max_discriminator_features: int = 512
+    ):
 
         if math.log2(spatial_extent) != int(math.log2(spatial_extent)):
             raise ValueError("spatial_extent must be a power of 2")
@@ -25,7 +25,6 @@ class UnetFactory(NetworkFactory):
         self._convolutions_per_level = convolutions_per_level
         self._min_discriminator_features = min_discriminator_features
         self._max_discriminator_features = max_discriminator_features
-        self._use_batchnorm = use_batchnorm
 
     def create_generator(self, x: tf.Tensor, reuse: bool = False, use_gpu: bool = True, data_format: str = "NHWC") -> tf.Tensor:
         with tf.variable_scope("generator", reuse=reuse), tf.device(select_device(use_gpu)):
