@@ -31,7 +31,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
                         help="Maximum number of iterations before training stops")
     parser.add_argument("--use-layer-norm", action="store_true", help="Use layer norm in discriminator")
     parser.add_argument("--xla", action="store_true",
-                        help="enable JIT compilation to XLA at the session level (gpu only)")
+                        help="Enable XLA JIT compilation (GPU only)")
     return parser
 
 
