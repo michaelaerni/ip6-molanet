@@ -99,7 +99,16 @@ class BigDiscPix2Pix(NetworkFactory):
         with tf.variable_scope("discriminator", reuse=reuse), tf.device(select_device(use_gpu)):
             concat_axis = 3 if data_format == "NHWC" else 1
 
-            original_y = y
+            # Has to be concatenated here in order for tf.gradients to work
+            concatenated_input = tf.concat((x, y), axis=concat_axis)
+            if data_format == "NHWC":
+                x = concatenated_input[:, :, :, :3]
+                y = concatenated_input[:, :, :, 3:]
+            elif data_format == "NCHW":
+                x = concatenated_input[:, :3, :, :]
+                y = concatenated_input[:, 3:, :, :]
+            else:
+                raise ValueError(f"Unsupported data format {data_format}")
 
             # Multiply mask input
             # Concatenate y as some parts of x could be zero, thus bad masks in black input areas would be ignored
@@ -202,6 +211,6 @@ class BigDiscPix2Pix(NetworkFactory):
                 weight_initializer=tf.uniform_unit_scaling_initializer(1.0))
 
             if return_input_tensor:
-                return output, tf.concat([x, original_y], axis=concat_axis)
+                return output, concatenated_input
             else:
                 return output
