@@ -1,5 +1,4 @@
 import logging
-import math
 from typing import Union
 
 from molanet.base import NetworkFactory
@@ -97,16 +96,6 @@ class BigDiscPix2Pix(NetworkFactory):
             return tf.tanh(input_tensor, name="dec_activation")
 
     @classmethod
-    def _conv_act_pool(cls, features: tf.Tensor, depth_maps: int, data_format, layer: int):
-        conv = conv2d(features, depth_maps, f"conv_xy_{layer}", 3, 1, do_batchnorm=False, do_activation=False,
-                      data_format=data_format)
-        activated_conv = tf.nn.relu(conv, f"activation_xy_{layer}")
-        maximally_activated_conv = tf.nn.max_pool(activated_conv, [1, 2, 2, 1], [1, 1, 1, 1], 'VALID',
-                                                  data_format,
-                                                  f"pool_xy_{layer}")
-        return maximally_activated_conv
-
-    @classmethod
     def _leaky_relu_func(cls, features):
         return tf.maximum(0.2 * features, features)
 
@@ -128,7 +117,8 @@ class BigDiscPix2Pix(NetworkFactory):
                             stride=1,
                             do_batchnorm=False,
                             do_activation=False if layer_norm else True,
-                            data_format=data_format)
+                            data_format=data_format,
+                            weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
 
         if dropout_keep_prob is not None:
             conv = tf.nn.dropout(conv, dropout_keep_prob, name=f"{name}_dropout")
@@ -176,22 +166,25 @@ class BigDiscPix2Pix(NetworkFactory):
 
             mask, _, _ = conv2d(y, 64, "disc_y_conv", 5, 1, do_batchnorm=False,
                                 do_activation=False if self._use_layer_norm else True,
-                                data_format=data_format)
+                                data_format=data_format,
+                                weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
             if self._use_layer_norm:
-                mask = self._layer_norm(mask,do_activation=True)
+                mask = self._layer_norm(mask, do_activation=True)
 
             # image pipeline
             x1, _, _ = conv2d(x, 16, "x1", 5, stride=1, do_batchnorm=False,
                               do_activation=False if self._use_layer_norm else True,
-                              data_format=data_format)
+                              data_format=data_format,
+                              weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
             if self._use_layer_norm:
-                x1 = self._layer_norm(x1,do_activation=True)
+                x1 = self._layer_norm(x1, do_activation=True)
 
             x2, _, _ = conv2d(x1, 64, "x2", 5, stride=1, do_batchnorm=False,
                               do_activation=False if self._use_layer_norm else True,
-                              data_format=data_format)
+                              data_format=data_format,
+                              weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
             if self._use_layer_norm:
-                x2 = self._layer_norm(x2,do_activation=True)
+                x2 = self._layer_norm(x2, do_activation=True)
 
             # concat
             xy = tf.concat([x2, mask], axis=concat_axis)
@@ -218,7 +211,8 @@ class BigDiscPix2Pix(NetworkFactory):
                     else self._max_discriminator_features
 
             output, _, _ = conv2d(xy_k, 1, "final", 1, 1, do_batchnorm=False, do_activation=False,
-                                  data_format=data_format)
+                                  data_format=data_format,
+                                  weight_initializer=tf.uniform_unit_scaling_initializer(1.15))
 
             if return_input_tensor:
                 return output, xy
