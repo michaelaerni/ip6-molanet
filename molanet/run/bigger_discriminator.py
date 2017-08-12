@@ -93,9 +93,9 @@ if __name__ == "__main__":
     network_factory = BigDiscPix2Pix(
         spatial_extent=512,
         min_generator_features=64,
-        max_generator_features=1024,
+        max_generator_features=512,
         min_discriminator_features=64,
-        max_discriminator_features=1024,
+        max_discriminator_features=512,
         dropout_keep_probability=0.5,
         dropout_layer_count=2,
         use_batchnorm=True,
