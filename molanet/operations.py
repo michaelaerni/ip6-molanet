@@ -57,49 +57,29 @@ def tanh_to_sigmoid(input_tensor: tf.Tensor) -> tf.Tensor:
     return tf.divide(tf.add(input_tensor, 1.0), 2.0)
 
 
-def conv2d_dilated(
+def _fix_padding(
         input_tensor: tf.Tensor,
-        feature_count: int,
-        dilation_rate: int,
-        name: str,
-        filter_size: int = 3,
-        data_format: str = "NHWC",
-        weight_initializer: tf.Initializer = tf.uniform_unit_scaling_initializer(1.43)
-) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+        mode: str,
+        paddings_2d: tf.Tensor,
+        data_format: str) -> Tuple[str, tf.Tensor]:
 
-    with tf.name_scope(f"conv2d_dilated_{name}"):
+    if mode == "SAME" or mode == "VALID":
+        return mode, input_tensor
 
-        # Check data format and select input feature count
-        tf.assert_rank(input_tensor, 4)
-        input_shape = input_tensor.get_shape()
-        if data_format == "NHWC":
-            input_feature_count = input_shape[-1]
-        elif data_format == "NCHW":
-            input_feature_count = input_shape[1]
-        else:
-            raise ValueError(f"Unsupported data format {data_format}")
+    tf.assert_rank(paddings_2d, 2)
 
-        # Create variables
-        w = tf.get_variable(
-            f"w_{name}",
-            shape=[filter_size, filter_size, input_feature_count, feature_count],
-            dtype=tf.float32,
-            initializer=weight_initializer)
-        b = tf.get_variable(f"b_{name}",
-                            shape=[feature_count], dtype=tf.float32, initializer=tf.constant_initializer(0.0))
+    if data_format == "NHWC":
+        paddings = tf.concat([[[0, 0]], paddings_2d, [[0, 0]]], axis=0)
+    elif data_format == "NCHW":
+        paddings = tf.concat([[[0, 0], [0, 0]], paddings_2d], axis=0)
+    else:
+        raise ValueError(f"Unsupported data format {data_format}")
 
-        # Perform convolution
-        conv = tf.nn.convolution(
-            input_tensor,
-            filter=w,
-            padding="SAME",  # TODO: Make padding configurable
-            dilation_rate=[dilation_rate, dilation_rate],
-            data_format=data_format)
-
-        result = tf.nn.bias_add(conv, b, data_format=data_format)
-        result = tf.nn.relu(result)
-
-        return result, w, b
+    if mode == "REFLECT":
+        padded_tensor = tf.pad(input_tensor, paddings, mode="REFLECT")
+        return "VALID", padded_tensor
+    else:
+        raise ValueError(f"Unsupported mode {mode}")
 
 
 def conv2d_transpose(
@@ -108,6 +88,7 @@ def conv2d_transpose(
         name: str,
         filter_size: int,
         output_shape_2d: Tuple[tf.Tensor, tf.Tensor],
+        padding: str = "SAME",
         keep_probability: tf.Tensor = None,
         concat_activations: tf.Tensor = None,
         stride: int = 1,
@@ -151,7 +132,7 @@ def conv2d_transpose(
             filter=w,
             output_shape=output_shape,
             strides=strides,
-            padding="SAME",  # TODO: Make padding configurable
+            padding=padding,
             data_format=data_format)
 
         result = tf.nn.bias_add(conv, b, data_format=data_format)
@@ -177,6 +158,7 @@ def conv2d(
         name: str,
         filter_size: int,
         stride: int = 1,
+        padding: str = "SAME",
         do_batchnorm: bool = True,
         do_activation: bool = True,
         data_format: str = "NHWC",
@@ -190,11 +172,32 @@ def conv2d(
         if data_format == "NHWC":
             input_feature_count = input_shape[-1]
             strides = [1, stride, stride, 1]
+            input_shape_2d = input_shape[1], input_shape[2]
         elif data_format == "NCHW":
             input_feature_count = input_shape[1]
             strides = [1, 1, stride, stride]
+            input_shape_2d = input_shape[2], input_shape[3]
         else:
             raise ValueError(f"Unsupported data format {data_format}")
+
+        # Apply padding
+        if padding != "SAME" and padding != "VALID":
+            # (W - F + 2P) / S + 1 = W
+            # (W - 1) * S = W - F + 2P
+            # (W - 1) * S - W + F = 2P
+            # W*S - S - W + F = 2P
+            # (F - S) - W + W*S = 2P
+            # (F - S) + W * (S - 1) = 2P = PL + PR
+            half_vertical_padding = (filter_size - stride) + input_shape_2d[0] * (stride - 1)
+            half_horizontal_padding = (filter_size - stride) + input_shape_2d[1] * (stride - 1)
+            paddings_2d = tf.convert_to_tensor([[
+                tf.cast(half_vertical_padding, tf.int32),  # Top
+                tf.cast(tf.ceil(half_vertical_padding), tf.int32)  # Bottom
+            ], [
+                tf.cast(half_horizontal_padding, tf.int32),  # Left
+                tf.cast(tf.ceil(half_horizontal_padding), tf.int32)  # Right
+            ]])
+            padding, input_tensor = _fix_padding(input_tensor, padding, paddings_2d, data_format)
 
         # Create variables
         w = tf.get_variable(
@@ -215,7 +218,7 @@ def conv2d(
         result = tf.nn.bias_add(conv, b, data_format=data_format)
 
         if do_batchnorm:
-            result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True, data_format=data_format)  # TODO: Params?
+            result = tf.contrib.layers.batch_norm(result, decay=0.9, epsilon=1e-5, fused=True, data_format=data_format)
 
         if do_activation:
             result = leaky_relu(result, 0.2)
