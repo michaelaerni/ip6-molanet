@@ -32,11 +32,15 @@ class WassersteinJaccardFactory(ObjectiveFactory):
                 use_gpu=use_gpu,
                 data_format=data_format)
 
+            generator_discriminator = tf.reshape(generator_discriminator, shape=[-1])
+
             # Generated samples should be close to their inverse jaccard index => Loss defined
             # Generator samples have to be first converted into range [0, 1]
-            generated_jaccard_loss = tf.ones_like(generator_discriminator) - jaccard_index(
+            generated_jaccard_index = jaccard_index(
                 values=tanh_to_sigmoid(generator),
-                labels=tanh_to_sigmoid(y))
+                labels=tanh_to_sigmoid(y)
+            )
+            generated_jaccard_loss = tf.ones_like(generated_jaccard_index) - generated_jaccard_index
 
             loss_generated = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
                 logits=generator_discriminator,
