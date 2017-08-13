@@ -9,12 +9,11 @@ import tensorflow as tf
 from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
     EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb
-from molanet.models.pix2pix import Pix2PixFactory
-from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
+from molanet.models.final_architecture import MolanetFactory, MolanetLossFactory
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser("Supervised loss training script")
+    parser = argparse.ArgumentParser("Final architecture partially supervised training script")
 
     parser.add_argument("--sampledir", type=str,
                         help="Root sample directory, containing set directories and meta files")
@@ -44,7 +43,7 @@ if __name__ == "__main__":
 
     if args.logsubdir and args.restore is None:
         now = datetime.now()
-        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}_supervised_loss"
+        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}_final_partially_supervised"
         logdir = os.path.join(args.logdir, subdirname)
     else:
         logdir = args.logdir
@@ -89,23 +88,22 @@ if __name__ == "__main__":
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
         log.info("Enabled JIT XLA compilation")
 
-    network_factory = Pix2PixFactory(
-        spatial_extent=512,
-        min_generator_features=64,
-        max_generator_features=1024,
-        min_discriminator_features=64,
-        max_discriminator_features=1024,
-        dropout_keep_probability=0.5,
-        dropout_layer_count=2,
-        use_batchnorm=True,
-        weight_initializer=tf.truncated_normal_initializer(stddev=0.02)
+    network_factory = MolanetFactory(
+        convolutions_per_level=1,
+        min_discriminator_features=32,
+        max_discriminator_features=512
     )
 
     trainer = NetworkTrainer(
         training_pipeline,
         cv_pipeline,
         network_factory,
-        WassersteinGradientPenaltyFactory(gradient_lambda=10, network_factory=network_factory, l1_lambda=100.0),
+        MolanetLossFactory(
+            gradient_lambda=10,
+            network_factory=network_factory,
+            use_jaccard=False,
+            l1_lambda=100.0
+        ),
         training_options=TrainingOptions(
             cv_summary_interval=args.cv_interval,
             summary_directory=logdir,
