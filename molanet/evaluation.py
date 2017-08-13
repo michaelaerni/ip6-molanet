@@ -1,4 +1,5 @@
 import argparse
+import logging
 
 from molanet.base import NetworkEvaluator
 from molanet.input import EvaluationPipeline, RGBToLabConverter
@@ -24,6 +25,8 @@ def create_arg_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = create_arg_parser()
     args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s [%(name)s]: %(message)s")
 
     data_format = "NCHW" if args.nchw else "NHWC"
 
