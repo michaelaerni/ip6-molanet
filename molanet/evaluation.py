@@ -16,6 +16,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--nchw", action="store_true", help="Use NCHW data format for evaluation")
     parser.add_argument("--gpu", action="store_true", help="Use GPU for evaluation")
+    parser.add_argument("--convert-colors", action="store_true", help="Convert from RGB to CIE Lab")
 
     return parser
 
@@ -26,8 +27,10 @@ if __name__ == "__main__":
 
     data_format = "NCHW" if args.nchw else "NHWC"
 
+    color_converter = RGBToLabConverter() if args.convert_colors else None
+
     pipeline = EvaluationPipeline(args.sampledir, args.dataset, image_size=512,
-                                  color_converter=RGBToLabConverter(),
+                                  color_converter=color_converter,
                                   batch_size=1, batch_thread_count=1,
                                   data_format=data_format)
 
@@ -35,8 +38,8 @@ if __name__ == "__main__":
         512,
         min_generator_features=64,
         min_discriminator_features=64,
-        max_generator_features=512,
-        max_discriminator_features=512,
+        max_generator_features=1024,
+        max_discriminator_features=1024,
         dropout_layer_count=2,
         use_batchnorm=True)
 
