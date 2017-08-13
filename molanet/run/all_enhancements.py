@@ -9,7 +9,7 @@ import tensorflow as tf
 from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
     EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb
-from molanet.models.molanet import MolanetFactory, MolanetLossFactory
+from molanet.models.final_architecture import MolanetFactory, MolanetLossFactory
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
