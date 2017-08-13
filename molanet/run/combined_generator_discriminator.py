@@ -89,8 +89,8 @@ if __name__ == "__main__":
         log.info("Enabled JIT XLA compilation")
 
     network_factory = MolanetFactory(
-        convolutions_per_level=2,
-        min_discriminator_features=64,
+        convolutions_per_level=1,
+        min_discriminator_features=32,
         max_discriminator_features=512
     )
 

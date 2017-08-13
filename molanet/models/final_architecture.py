@@ -11,8 +11,8 @@ class MolanetFactory(NetworkFactory):
 
     def __init__(
             self,
-            convolutions_per_level: int = 2,
-            min_discriminator_features: int = 64,
+            convolutions_per_level: int = 1,
+            min_discriminator_features: int = 32,
             max_discriminator_features: int = 512
     ):
         self._convolutions_per_level = convolutions_per_level
@@ -190,19 +190,8 @@ class MolanetFactory(NetworkFactory):
             # Convolve original image branch twice
             x1, _, _ = conv2d(
                 x,
-                feature_count=16,
-                name="x1",
-                filter_size=5,
-                stride=1,
-                do_batchnorm=False,
-                do_activation=True,
-                data_format=data_format,
-                padding="REFLECT",
-                weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
-            x2, _, _ = conv2d(
-                x1,
                 feature_count=32,
-                name="x2",
+                name="x1",
                 filter_size=5,
                 stride=1,
                 do_batchnorm=False,
@@ -212,7 +201,7 @@ class MolanetFactory(NetworkFactory):
                 weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
 
             # Concat input branches
-            xy = tf.concat([x2, mask], axis=concat_axis, name="concat_input_branches")
+            xy = tf.concat([x1, mask], axis=concat_axis, name="concat_input_branches")
 
             # Downsample to 1x1
             xy_k = xy
