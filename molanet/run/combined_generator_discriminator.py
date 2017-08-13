@@ -9,12 +9,11 @@ import tensorflow as tf
 from molanet.base import NetworkTrainer, TrainingOptions
 from molanet.input import TrainingPipeline, \
     EvaluationPipeline, random_rotate_flip_rgb, random_contrast_rgb, random_brightness_rgb
-from molanet.models.unet_big_discriminator import UnetBigDiscriminatorFactory
-from molanet.models.wgan_gp import WassersteinGradientPenaltyFactory
+from molanet.models.molanet import MolanetFactory, MolanetLossFactory
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser("Enhanced generator training script")
+    parser = argparse.ArgumentParser("Combined enhanced generator and discriminator training script")
 
     parser.add_argument("--sampledir", type=str,
                         help="Root sample directory, containing set directories and meta files")
@@ -44,7 +43,7 @@ if __name__ == "__main__":
 
     if args.logsubdir and args.restore is None:
         now = datetime.now()
-        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}_enhanced_generator"
+        subdirname = f"run_{now.month:02}{now.day:02}_{now.hour:02}{now.minute:02}_combined_generator_discriminator"
         logdir = os.path.join(args.logdir, subdirname)
     else:
         logdir = args.logdir
@@ -89,18 +88,22 @@ if __name__ == "__main__":
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
         log.info("Enabled JIT XLA compilation")
 
-    network_factory = UnetBigDiscriminatorFactory(
-        spatial_extent=512,
+    network_factory = MolanetFactory(
         convolutions_per_level=2,
         min_discriminator_features=64,
-        max_discriminator_features=512,
+        max_discriminator_features=512
     )
 
     trainer = NetworkTrainer(
         training_pipeline,
         cv_pipeline,
         network_factory,
-        WassersteinGradientPenaltyFactory(gradient_lambda=10, network_factory=network_factory, l1_lambda=0.0),
+        MolanetLossFactory(
+            gradient_lambda=10,
+            network_factory=network_factory,
+            use_jaccard=False,
+            l1_lambda=0.0
+        ),
         training_options=TrainingOptions(
             cv_summary_interval=args.cv_interval,
             summary_directory=logdir,

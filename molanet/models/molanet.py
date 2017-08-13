@@ -12,7 +12,7 @@ class MolanetFactory(NetworkFactory):
     def __init__(
             self,
             convolutions_per_level: int = 2,
-            min_discriminator_features: int = 32,
+            min_discriminator_features: int = 64,
             max_discriminator_features: int = 512
     ):
         self._convolutions_per_level = convolutions_per_level
