@@ -16,7 +16,7 @@ from molanet.data.entities import MoleSample, Segmentation
 class RecordSaver(object):
     def __init__(self, root_directory: str, data_set: str,
                  compression_type: TFRecordCompressionType = TFRecordCompressionType.ZLIB,
-                 rescale: bool = False):
+                 rescale: int = None):
 
         self._root_directory = os.path.abspath(root_directory)
         self._target_directory = os.path.abspath(os.path.join(root_directory, "records"))
@@ -58,10 +58,9 @@ class RecordSaver(object):
         segmentation_data = segmentation.mask
 
         # Rescale the images if necessary
-        if self._rescale:
-            # TODO: Target resolution is currently hardcoded, could parameterize
-            sample_data = self._resize_image(sample_data, 512)
-            segmentation_data = self._resize_segmentation(segmentation_data, 512)
+        if self._rescale is not None:
+            sample_data = self._resize_image(sample_data, self._rescale)
+            segmentation_data = self._resize_segmentation(segmentation_data, self._rescale)
 
         # Transform into tanh range
         sample_data = (sample_data.astype(np.float32) / 255.0 - 0.5) * 2.0  # [0, 255] -> [-1, 1]
@@ -105,8 +104,8 @@ def create_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--target-directory", type=str, default=None,
                         help="Base directory into which the data sets are exported")
-    parser.add_argument("--rescale", action="store_true",
-                        help="Rescale all images to 512x512 pixels. Non-matching aspect ratios are padded.")
+    parser.add_argument("--rescale", type=int,default=None,
+                        help="Rescale all images NxN. Non-matching aspect ratios are padded.")
     parser.add_argument("--metadata-only", action="store_true",
                         help="Only export the data set lists, no images. Image directories are not touched.")
     parser.add_argument("datasets", metavar="SET", type=str, nargs="+", help="One or more data sets to export")
