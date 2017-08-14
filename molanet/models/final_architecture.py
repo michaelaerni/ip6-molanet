@@ -187,7 +187,7 @@ class MolanetFactory(NetworkFactory):
                 padding="REFLECT",
                 weight_initializer=tf.uniform_unit_scaling_initializer(1.43))
 
-            # Convolve original image branch twice
+            # Convolve original image branch
             x1, _, _ = conv2d(
                 x,
                 feature_count=32,
