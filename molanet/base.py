@@ -606,7 +606,8 @@ class NetworkEvaluator(object):
             ])
 
             for idx, sample_id in enumerate(sample_ids):
-                uuid, segmentation_id = sample_id.split("_")
+                uuid = sample_id.split("_")[0]
+                segmentation_id = sample_id.split("_")[1]
                 writer.writerow([
                     uuid,
                     segmentation_id,
