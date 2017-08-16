@@ -3,7 +3,7 @@ import logging
 
 from molanet.base import NetworkEvaluator
 from molanet.input import EvaluationPipeline, RGBToLabConverter
-from molanet.models.pix2pix import Pix2PixFactory
+from molanet.models.final_architecture import MolanetFactory
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
@@ -37,14 +37,11 @@ if __name__ == "__main__":
                                   batch_size=1, batch_thread_count=1,
                                   data_format=data_format)
 
-    network_factory = Pix2PixFactory(
-        512,
-        min_generator_features=64,
-        min_discriminator_features=64,
-        max_generator_features=1024,
-        max_discriminator_features=1024,
-        dropout_layer_count=2,
-        use_batchnorm=True)
+    network_factory = MolanetFactory(
+        convolutions_per_level=1,
+        min_discriminator_features=32,
+        max_discriminator_features=512
+    )
 
     evaluator = NetworkEvaluator(pipeline, network_factory, args.checkpoint, args.output, args.gpu, data_format)
 
