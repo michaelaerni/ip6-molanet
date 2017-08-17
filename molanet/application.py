@@ -42,8 +42,11 @@ def load_transform_segmentation(input_file: str) -> np.ndarray:
     return np.expand_dims(rescale_convert(input_file)[:, :, :, 0], axis=3)
 
 
-def save_segmentation(segmentation: tf.Tensor, path: str):
-    pass
+def save_segmentation(segmentation: np.ndarray, path: str):
+    rescaled = np.round((segmentation + 1.0) / 2.0 * 255.0).astype(np.uint8)
+    image = Image.fromarray(np.reshape(rescaled, (512, 512)), mode="L")
+
+    image.save(path)
 
 
 def get_segmentation_file_name(lesion_file_path: str, output_directory: Optional[str] = None) -> str:
