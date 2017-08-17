@@ -4,14 +4,23 @@ from typing import Callable, Tuple, List
 import tensorflow as tf
 
 
-# TODO: Docstrings
-
-
 def leaky_relu(features, alpha=0.0):
+    """
+    Performs leaky relu on the given features with the given slope.
+    :param features: Features to perform activation on
+    :param alpha: Slope to use for negative values
+    :return: Tensor with leaky relu activation applied
+    """
     return tf.maximum(alpha * features, features)
 
 
 def select_device(use_gpu: bool) -> Callable[[tf.Operation], str]:
+    """
+    Perform device selection. This returns a function which can be provided to tf.device(...).
+    :param use_gpu: If True, GPU will be used for all operations except variable declarations.
+    If False, only CPU is used.
+    :return: Device selector function
+    """
     def _selector(op: tf.Operation) -> str:
         # Do not assign device placement for variables as it breaks Tensorflow somehow
         if op.type == "VariableV2":
@@ -22,12 +31,21 @@ def select_device(use_gpu: bool) -> Callable[[tf.Operation], str]:
 
 
 def use_cpu():
+    """
+    Use cpu for all operations. This method should be used as a scope, i.e. with use_cpu(): ...
+    :return: Device scope which solely uses CPU
+    """
     return tf.device("/cpu:0")
 
 
 def jaccard_index(labels: tf.Tensor, values: tf.Tensor) -> tf.Tensor:
-    # TODO: Document: how and why jacquard
-    # TODO: Document: Labels have to be either 0 or 1
+    """
+    Calculate modified Jaccard similarity between the given labels and values.
+    labels and values must have the same shape.
+    :param labels: Labels to use. All label values must be either 0 or 1.
+    :param values: Values to use. All values must reside in the range [0, 1].
+    :return: Modified Jaccard similarity. The output shape is equal to the first input shape, i.e. batch size.
+    """
 
     batch_size = tf.shape(labels)[0]
 
@@ -52,6 +70,11 @@ def jaccard_index(labels: tf.Tensor, values: tf.Tensor) -> tf.Tensor:
 
 
 def tanh_to_sigmoid(input_tensor: tf.Tensor) -> tf.Tensor:
+    """
+    Creates a tensor which converts values from the tanh into the sigmoid range.
+    :param input_tensor: Values to convert
+    :return: Converted values in the sigmoid range
+    """
     return tf.divide(tf.add(input_tensor, 1.0), 2.0)
 
 
