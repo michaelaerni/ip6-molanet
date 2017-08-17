@@ -7,8 +7,18 @@ from molanet.operations import use_cpu, select_device, jaccard_index, tanh_to_si
 
 
 class WassersteinJaccardFactory(ObjectiveFactory):
+    """
+    Loss factory to create Wasserstein GAN loss with gradient penalty
+    and context-aware discriminator loss.
+    """
 
     def __init__(self, gradient_lambda: float, network_factory: NetworkFactory, seed: int = None):
+        """
+        Creates a new Wasserstein GAN loss factory.
+        :param gradient_lambda: Lambda to multiply with discriminator gradient norm
+        :param network_factory: Network factory used to create the correlating generators and discriminators
+        :param seed: Seed which is used to initialize random values
+        """
         self._gradient_lambda = gradient_lambda
         self._seed = seed
         self._network_factory = network_factory

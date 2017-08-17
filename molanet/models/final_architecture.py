@@ -8,13 +8,21 @@ _log = logging.getLogger(__name__)
 
 
 class MolanetFactory(NetworkFactory):
-
+    """
+    Network factory which creates molanet generators and discriminators.
+    """
     def __init__(
             self,
             convolutions_per_level: int = 1,
             min_discriminator_features: int = 32,
             max_discriminator_features: int = 512
     ):
+        """
+        Creates a new molanet factory.
+        :param convolutions_per_level: Number of convolutions on each encoder and decoder level
+        :param min_discriminator_features: Minimum number of feature maps in the discriminator
+        :param max_discriminator_features: Maximum number of feature maps in the discriminator
+        """
         self._convolutions_per_level = convolutions_per_level
         self._min_discriminator_features = min_discriminator_features
         self._max_discriminator_features = max_discriminator_features
@@ -262,7 +270,11 @@ class MolanetFactory(NetworkFactory):
             else:
                 return output
 
+
 class MolanetLossFactory(ObjectiveFactory):
+    """
+    Loss factory producing context-aware loss functions, based on Jaccard similarity.
+    """
 
     def __init__(
             self,
@@ -272,6 +284,15 @@ class MolanetLossFactory(ObjectiveFactory):
             l1_lambda: float = 0.0,
             seed: int = None
     ):
+        """
+        Creates a new molanet loss factory.
+        :param gradient_lambda: Lambda to multiply with discriminator gradient norm
+        :param network_factory: Network factory used to create the correlating generators and discriminators
+        :param use_jaccard: If True, context-aware loss based on Jaccard similarity is used instead of normal GAN loss
+        :param l1_lambda: Lambda to multiply with the l1 distance between generated and real samples for the generator.
+        If 0, no l1 loss will be used.
+        :param seed: Seed which is used to initialize random values
+        """
         self._gradient_lambda = gradient_lambda
         self._seed = seed
         self._network_factory = network_factory

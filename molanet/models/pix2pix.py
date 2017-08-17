@@ -5,6 +5,9 @@ from molanet.operations import *
 
 
 class Pix2PixFactory(NetworkFactory):
+    """
+    Network factory which creates base architecture generators and discriminators.
+    """
 
     def __init__(
             self,
@@ -17,6 +20,18 @@ class Pix2PixFactory(NetworkFactory):
             dropout_layer_count: int = 2,
             use_batchnorm: bool = True,
             weight_initializer=tf.truncated_normal_initializer(stddev=0.02)):
+        """
+        Creates a new base architecture factory.
+        :param spatial_extent: Spatial extent (i.e. width and height) of input images
+        :param min_generator_features: Minimum number of feature maps in the generator
+        :param min_discriminator_features: Minimum number of feature maps in the discriminator
+        :param max_generator_features: Maximum number of feature maps in the generator
+        :param max_discriminator_features: Maximum number of feature maps in the discriminator
+        :param dropout_keep_probability: Keep probability for dropout layers
+        :param dropout_layer_count: Number of generator decoder layers on which dropout is applied
+        :param use_batchnorm: If False, no batch normalization will be used
+        :param weight_initializer: Weight initializer to use. This value is currently ignored.
+        """
 
         # TODO: weight_initializer is currently ignored
 
@@ -124,8 +139,17 @@ class Pix2PixFactory(NetworkFactory):
 
 
 class Pix2PixLossFactory(ObjectiveFactory):
-
+    """
+    Factory to create non-Wasserstein losses.
+    """
     def __init__(self, l1_lambda: float):
+        """
+        Creates a new loss factory.
+
+        :param l1_lambda: Lambda to multiply with the l1 distance between generated and real samples for the generator.
+        If 0, no l1 loss will be used.
+        """
+
         self._l1_lambda = tf.constant(l1_lambda, dtype=tf.float32)
 
     def create_discriminator_loss(self, x: tf.Tensor, y: tf.Tensor, generator: tf.Tensor,

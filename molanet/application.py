@@ -1,13 +1,13 @@
 import argparse
 import logging
+import os
 from typing import Optional
 
-from molanet.models.final_architecture import MolanetFactory
-import tensorflow as tf
-import os
-import sys
 import numpy as np
+import tensorflow as tf
 from PIL import Image
+
+from molanet.models.final_architecture import MolanetFactory
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
@@ -84,9 +84,9 @@ def perform_evaluation(input_file: str,
         lesion_image: tf.Tensor,
         segmentation_mask: tf.Tensor,
         session: tf.Session,
-        output_directory: Optional[str] = None
+        _: Optional[str] = None
 ):
-    segmentation_file = get_segmentation_file_name(input_file, output_directory)
+    segmentation_file = get_segmentation_file_name(input_file)
     if not os.path.isfile(segmentation_file):
         log.warning(f"Segmentation file {segmentation_file} does not exist, will be ignored")
         return

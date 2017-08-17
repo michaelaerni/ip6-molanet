@@ -193,6 +193,10 @@ def _create_concatenated_images(
 
 
 class TrainingOptions(NamedTuple):
+    """
+    Options used to specify various aspects of model training.
+    """
+
     summary_directory: str
     max_iterations: int
     training_summary_interval: int = 20
@@ -205,7 +209,12 @@ class TrainingOptions(NamedTuple):
 
 
 class NetworkTrainer(object):
-    # TODO: Doc
+    """
+    Utility to train a model, optionally restoring it from a checkpoint.
+
+    This class handles cross-validation evaluation, model saving,
+    logging and TensorFlow sessions.
+    """
 
     def __init__(
             self,
@@ -217,6 +226,17 @@ class NetworkTrainer(object):
             learning_rate: float,
             beta1: float = 0.9,
             beta2: float = 0.999):
+        """
+        Create a new network trainer
+        :param training_pipeline: Input pipeline used for training
+        :param cv_pipeline: Input pipeline used for cross-validation
+        :param network_factory: Factory to create training and evaluation networks
+        :param objective_factory: Factory to create generator and discriminator losses
+        :param training_options: Options controlling the training process
+        :param learning_rate: Learning rate to use in the Adam optimizer
+        :param beta1: Beta1 to use in the Adam optimizer
+        :param beta2: Beta2 to use in the Adam optimizer
+        """
 
         self._training_options = training_options
         self._restored_iteration = None
@@ -279,8 +299,6 @@ class NetworkTrainer(object):
                 tf.summary.scalar("specificity", specificity),
                 tf.summary.scalar("jaccard_similarity", jaccard_similarity)
             ]
-
-            # TODO: Input pipeline summary is lost
 
             self._train_saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
 
@@ -348,6 +366,12 @@ class NetworkTrainer(object):
         self._sess = None
 
     def train(self):
+        """
+        Trains the model until a maximum number of iterations as specified in the training options is reached.
+
+        This method requires this trainer to have __enter__ called previously, otherwise no session exists
+        and calls to this method will fail.
+        """
         if self._sess is None:
             raise RuntimeError("A running session is required to start training")
 
@@ -463,6 +487,15 @@ class NetworkTrainer(object):
         _log.info("Training finished")
 
     def restore(self, iteration):
+        """
+        Restores the model checkpoint for the given iteration into the currently active session.
+
+        This method requires this trainer to have __enter__ called previously, otherwise no session exists
+        and calls to this method will fail.
+
+        The model checkpoint is read relatively to the output directory specified in the training options.
+        :param iteration: Iteration to restore
+        """
         if self._sess is None:
             raise RuntimeError("A running session is required to restore a model")
 
@@ -472,6 +505,14 @@ class NetworkTrainer(object):
 
 
 class NetworkEvaluator(object):
+    """
+    Utility to evaluate a previously trained model restored from a checkpoint.
+
+    Evaluation consists of running all input pipeline samples once through the generator.
+    All generated images as well as a summary file are written to the specified output directory.
+
+    This class handles TensorFlow sessions internally.
+    """
     def __init__(
             self,
             pipeline: InputPipeline,
@@ -481,7 +522,15 @@ class NetworkEvaluator(object):
             use_gpu: bool = False,
             data_format: str = "NHWC"
     ):
-        # TODO: Assert batch_size == 1
+        """
+        Creates a new network evaluator.
+        :param pipeline: Pipeline providing the samples to evaluate
+        :param network_factory: Network factory to create a generator network
+        :param checkpoint_file: Path to the checkpoint file to be restored
+        :param output_directory: Directory into which the evaluation results are written
+        :param use_gpu: If True, the GPU will be used instead of the CPU. Defaults to False.
+        :param data_format: Data format of the samples. Defaults to "NHWC".
+        """
         self._pipeline = pipeline
 
         self._checkpoint_file = checkpoint_file
@@ -496,8 +545,6 @@ class NetworkEvaluator(object):
 
         # Create networks
         generator = network_factory.create_generator(self._x, use_gpu=use_gpu, data_format=data_format)
-
-        # TODO: Refactor loss output in a way that objective can also be evaluated
 
         with use_cpu():
             # Create basic summary
@@ -529,6 +576,12 @@ class NetworkEvaluator(object):
         self._sess = None
 
     def evaluate(self):
+        """
+        Evaluate all samples in the input pipeline once and write the output into the specified directory.
+
+        This method requires this evaluator to have __enter__ called previously, otherwise no session exists
+        and calls to this method will fail.
+        """
         # Start input enqueue threads.
         coord = tf.train.Coordinator()
         _log.info("Starting queue runners...")

@@ -10,8 +10,6 @@ class ColorConverter(object):
     The order of image tensors has to be HWC, CHW is not supported.
     """
 
-    # TODO: Create convert_back method
-
     @staticmethod
     def convert(input_image: tf.Tensor) -> tf.Tensor:
         """
@@ -85,6 +83,13 @@ class RGBToLabConverter(ColorConverter):
 
 
 class InputPipeline(object):
+    """
+    Input pipeline which loads samples and provides it to a network.
+
+    This is an abstract base class.
+    Child classes should inherit override the objective creation methods.
+    Additional configuration should be supplied in the child's constructor.
+    """
 
     class _NoopConverter(ColorConverter):
         @staticmethod
@@ -97,11 +102,19 @@ class InputPipeline(object):
 
     # TODO: This only supports fixed size images, make flexible to support arbitrary sizes
     # TODO: When using arbitrary shapes and they have to be batched, it has to be handled somehow
-    # TODO: Refactor common functionality in all pipelines
 
     def __init__(self, input_directory: str, data_set_name: str, image_size: int,
                  color_converter: Optional[ColorConverter] = None,
                  data_format: str = "NHWC"):
+        """
+        Creates a new input pipeline.
+        :param input_directory: Input directory containing the different meta-files and record directory
+        :param data_set_name: Name of the data set to load
+        :param image_size: Spatial extent of input images. Same height and width are assumed.
+        :param color_converter: Optional color converter which converts color spaces during input
+        :param data_format: Data format to use
+        """
+
         if image_size < 1:
             raise ValueError("Image size must be bigger than 0")
         self._image_size = image_size
@@ -134,10 +147,16 @@ class InputPipeline(object):
 
     @property
     def sample_count(self) -> int:
+        """
+        :return: Number of samples this input pipeline has access to
+        """
         return len(self._file_paths)
 
     @property
     def color_converter(self):
+        """
+        :return: Color converter used by this input pipeline
+        """
         return self._color_converter
 
     @staticmethod
@@ -172,7 +191,10 @@ class InputPipeline(object):
 
 
 class TrainingPipeline(InputPipeline):
-    # TODO: Document: This runs multi threaded
+    """
+    Pipeline to be used during training. This pipeline is optimized for performance and therefore runs
+    multi-threaded and non-deterministic.
+    """
 
     def __init__(
             self,
@@ -254,7 +276,10 @@ class TrainingPipeline(InputPipeline):
 
 
 class EvaluationPipeline(InputPipeline):
-    # TODO: Document: This runs single threaded to allow for deterministic behaviour
+    """
+    Input pipeline to be used during evaluation.
+    This pipeline is optimized for deterministic behavior and therefore runs single threaded.
+    """
 
     def __init__(
             self,
@@ -315,9 +340,6 @@ class EvaluationPipeline(InputPipeline):
             )
 
             return image_batch, segmentation_batch, work_item_batch
-
-
-# TODO: Could implement random noise for augmentation
 
 
 def _rotate_90(sample_tensor: tf.Tensor) -> tf.Tensor:

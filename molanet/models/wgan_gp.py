@@ -6,13 +6,23 @@ import tensorflow as tf
 from molanet.base import ObjectiveFactory, NetworkFactory
 from molanet.operations import use_cpu, select_device
 
-
 _log = logging.getLogger(__name__)
 
 
 class WassersteinGradientPenaltyFactory(ObjectiveFactory):
-
-    def __init__(self, gradient_lambda: float, network_factory: NetworkFactory, l1_lambda: float = 0.0, seed: int = None):
+    """
+    Loss factory to create Wasserstein GAN loss with gradient penalty.
+    """
+    def __init__(self, gradient_lambda: float, network_factory: NetworkFactory,
+                 l1_lambda: float = 0.0, seed: int = None):
+        """
+        Creates a new Wasserstein GAN loss factory.
+        :param gradient_lambda: Lambda to multiply with discriminator gradient norm
+        :param network_factory: Network factory used to create the correlating generators and discriminators
+        :param l1_lambda: Lambda to multiply with the l1 distance between generated and real samples for the generator.
+        If 0, no l1 loss will be used.
+        :param seed: Seed which is used to initialize random values
+        """
         self._gradient_lambda = gradient_lambda
         self._seed = seed
         self._network_factory = network_factory

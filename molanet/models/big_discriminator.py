@@ -8,6 +8,10 @@ _log = logging.getLogger(__name__)
 
 
 class BigDiscPix2Pix(NetworkFactory):
+    """
+    Network factory which creates enhanced discriminators and base architecture generators.
+    """
+
     def __init__(
             self,
             spatial_extent: int,
@@ -19,6 +23,17 @@ class BigDiscPix2Pix(NetworkFactory):
             dropout_layer_count: int = 2,
             use_batchnorm: bool = True
     ):
+        """
+        Creates a new enhanced discriminator factory.
+        :param spatial_extent: Spatial extent (i.e. width and height) of input images
+        :param min_generator_features: Minimum number of feature maps in the generator
+        :param min_discriminator_features: Minimum number of feature maps in the discriminator
+        :param max_generator_features: Maximum number of feature maps in the generator
+        :param max_discriminator_features: Maximum number of feature maps in the discriminator
+        :param dropout_keep_probability: Keep probability for dropout layers
+        :param dropout_layer_count: Number of generator decoder layers on which dropout is applied
+        :param use_batchnorm: If False, no batch normalization will be used
+        """
 
         if math.log2(spatial_extent) != int(math.log2(spatial_extent)):
             raise ValueError("spatial_extent must be a power of 2")

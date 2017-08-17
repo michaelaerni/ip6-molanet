@@ -4,11 +4,13 @@ from typing import Union
 from molanet.base import NetworkFactory
 from molanet.operations import *
 
-
 _log = logging.getLogger(__name__)
 
 
 class UnetFactory(NetworkFactory):
+    """
+    Network factory which creates enhanced generators and base architecture discriminators.
+    """
 
     def __init__(
             self,
@@ -17,6 +19,13 @@ class UnetFactory(NetworkFactory):
             min_discriminator_features: int = 32,
             max_discriminator_features: int = 512
     ):
+        """
+        Creates a new enhanced generator factory.
+        :param spatial_extent: Spatial extent (i.e. width and height) of input images
+        :param convolutions_per_level: Number of convolutions on each encoder and decoder level
+        :param min_discriminator_features: Minimum number of feature maps in the discriminator
+        :param max_discriminator_features: Maximum number of feature maps in the discriminator
+        """
 
         if math.log2(spatial_extent) != int(math.log2(spatial_extent)):
             raise ValueError("spatial_extent must be a power of 2")
@@ -32,8 +41,6 @@ class UnetFactory(NetworkFactory):
             current_layer = x
             encoder_level_layers = []
             encoder_level_shapes = []
-
-            # TODO: Document that we are using batch norm on all layers and do not convolve until 1x1 anymore
 
             # Create encoder, level by level
             for level, feature_count in enumerate(feature_counts[:-1]):

@@ -7,7 +7,20 @@ from molanet.data.entities import *
 
 
 class DatabaseConnection(object):
+    """
+    Connection to a sample data base.
+    """
     def __init__(self, host: str, database: str, port: int = 5432, username: str = None, password: str = None):
+        """
+        Creates a new database connection and connects to the specified database.
+
+        :param host: Database host
+        :param database: Name of the database containing the samples
+        :param port: Port of the database system
+        :param username: Username used to connect
+        :param password: Password used to connect
+        """
+
         self._connection_params = {
             "dbname": database,
             "host": host,
@@ -24,6 +37,11 @@ class DatabaseConnection(object):
         self._connection.close()
 
     def insert(self, sample: MoleSample) -> None:
+        """
+        Insert the given sample into the database
+        :param sample: Sample to insert
+        """
+
         sample_query = "INSERT INTO mole_samples (uuid, data_source, data_set, source_id, name, height, width, diagnosis, image) " \
             "VALUES (%(uuid)s, %(data_source)s, %(data_set)s, %(source_id)s, %(name)s, %(height)s, %(width)s, %(diagnosis)s, %(image)s)"
 
@@ -41,6 +59,11 @@ class DatabaseConnection(object):
         self._connection.commit()
 
     def clear_data(self, data_source: str) -> int:
+        """
+        Delete all lesion images and segmentation masks from a single data source.
+        :param data_source: Data source whose samples should be deleted
+        :return: Number of deleted samples
+        """
         query = "DELETE FROM mole_samples WHERE data_source = %(data_source)s"
 
         with self._connection.cursor() as cur:
@@ -50,6 +73,11 @@ class DatabaseConnection(object):
             return cur.rowcount  # Number of deleted rows
 
     def create_data_set_entries(self, data_set_name: str, entries: List[Tuple[str, str]]):
+        """
+        Create entries for the given list in the given data set.
+        :param data_set_name: Name of the target data set
+        :param entries: List of (lesion uuid, segmentation id) pairs to insert into the data set
+        """
         query = """INSERT INTO set_entries (mole_sample_uuid, segmentation_source_id, set_name)
                    VALUES (%(mole_sample_uuid)s, %(segmentation_source_id)s, %(set_name)s)"""
 
@@ -65,6 +93,12 @@ class DatabaseConnection(object):
         self._connection.commit()
 
     def clear_data_set_entries(self, data_set_name: str) -> int:
+        """
+        Clear all entries in the given data set. This method only deletes references and no actual lesions or
+        segmentation masks.
+        :param data_set_name: Name of the data set to delete
+        :return: Number of deleted data set entries
+        """
         query = """DELETE FROM set_entries WHERE set_name = %(set_name)s"""
 
         with self._connection.cursor() as cur:
@@ -74,6 +108,13 @@ class DatabaseConnection(object):
 
     def get_data_set_samples(self, data_set: str)\
             -> Iterable[Tuple[MoleSample, List[Segmentation]]]:
+        """
+        Get all samples in the given data set.
+
+        This method loads its results lazy.
+        :param data_set: Data set whose samples should be retrieved
+        :return: List of (lesion, mask) tuples
+        """
         sample_uuid_query = """SELECT DISTINCT mole_sample_uuid FROM set_entries WHERE set_name = %(set_name)s"""
         sample_query = """SELECT uuid, data_source, data_set, source_id, name, height, width, diagnosis, image
                           FROM mole_samples WHERE uuid = %(uuid)s"""
@@ -100,6 +141,11 @@ class DatabaseConnection(object):
                 yield sample, segmentations
 
     def get_data_set_ids(self, data_set: str) -> List[Tuple[str, str]]:
+        """
+        Get all ids in the given data set.
+        :param data_set: Data set whose ids should be retrieved
+        :return: List of (lesion uuid, segmentation id) tuples
+        """
         query = """SELECT mole_sample_uuid, segmentation_source_id FROM set_entries WHERE set_name = %(set_name)s"""
 
         with self._connection.cursor() as cur:
@@ -107,6 +153,15 @@ class DatabaseConnection(object):
             return cur.fetchall()
 
     def get_samples(self, offset: int = 0, batch_size: int = 20) -> Iterable[MoleSample]:
+        """
+        Get a list of all samples, starting at the given offset.
+        This method performs lazy loading.
+
+        :param offset: Offset index (inclusive) from which samples should be retrieved.
+        :param batch_size: Number of samples to fetch each database request. The higher, the better the network
+        is utilized. Too high number result in decreased database performance.
+        :return: Lazy loaded list of all samples
+        """
         if offset < 0:
             raise ValueError("offset must be >= 0")
 
@@ -128,6 +183,12 @@ class DatabaseConnection(object):
                     yield self._record_to_sample(sample_record, segmentations)
 
     def get_segmentations_for_sample(self, sample_uuid: str) -> Iterable[Segmentation]:
+        """
+        Get all segmentations for a given sample.
+        This method performs lazy loading.
+        :param sample_uuid: Uuid of the sample whose segmentation should be retrieved
+        :return: Lazy loaded list of all segmentation for the given sample
+        """
         query = """SELECT source_id, height, width, mask
         FROM segmentations
         WHERE mole_sample_uuid = %(sample_uuid)s"""
@@ -167,6 +228,12 @@ class DatabaseConnection(object):
 
     @staticmethod
     def sample_to_dict(sample: MoleSample, include_image: bool = True) -> Dict:
+        """
+        Serialize a sample into a dictionary.
+        :param sample: Sample to serialize
+        :param include_image: If True, the lesion image is included in the results, if False it is not
+        :return: Serialized sample
+        """
         result = {
             "uuid": sample.uuid,
             "data_source": sample.data_source,
@@ -185,6 +252,13 @@ class DatabaseConnection(object):
 
     @staticmethod
     def segmentation_to_dict(sample_uuid, segmentation: Segmentation, include_image: bool = True) -> Dict:
+        """
+        Serialize a segmentation into a dictionary.
+        :param sample_uuid: Uuid of the sample the segmentation belongs to
+        :param segmentation: Segmentation to serialize
+        :param include_image: If True, the segmentation mask is included in the results, if False it is not
+        :return: Serialized segmentation
+        """
         result = {
             "mole_sample_uuid": sample_uuid,
             "source_id": segmentation.source_id,
