@@ -9,7 +9,6 @@ with open("LICENSE") as license_file:
     license_text = license_file.read()
 
 # Load requirements
-# TODO: Best practice would be to have them separate here but we just use the pip frozen dependencies
 with open('requirements.txt') as requirements_file:
     requirements = requirements_file.read().splitlines()
 
