@@ -6,4 +6,4 @@ thesis of Michael Aerni and Patrick Del Conte.
 This source code version represents the submission state and can
 contain bugs as well as improvement points.
 
-A PDF of the thesis is available on request.
+A PDF of the thesis is available in this repository.
